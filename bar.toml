@@ -30,4 +30,7 @@ code = ["Hpack.encodeInt", "Hpack.decodeInt", "Hpack.decodeIntUpTo",
 [tests]
 results = "tests/TEST-RESULTS.md"
 command = "python3 tests/run_tests.py"
-files = ["tests/run_tests.py", "tests/plant_bugs.py"]
+files = ["tests/run_tests.py", "tests/plant_bugs.py", "tests/rfc7541.txt",
+         "tests/oracles/python/oracle.py", "tests/oracles/python/requirements.txt",
+         "tests/oracles/go/main.go", "tests/oracles/go/go.mod", "tests/oracles/go/go.sum",
+         "tests/oracles/nghttp2/wrapper.c"]

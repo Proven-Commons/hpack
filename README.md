@@ -16,7 +16,7 @@ Machine-checked proofs show:
 - The encoders write what the RFC says, and decoding what they write gives it back.
 - The static table is Table 1 of Appendix A, and the examples of Appendix C come out byte for byte.
 
-It is tested against a model of the RFC and other implementations: Python `hpack`, Go's `golang.org/x/net/http2/hpack`, and nghttp2. The record is in `tests/TEST-RESULTS.md`. It is a project of [Proven Commons](https://github.com/Proven-Commons/mission), built to the verified bar published there.
+It is tested against a model of the RFC and three other implementations: Python `hpack` 4.2.0, Go's `golang.org/x/net/http2/hpack` (x/net v0.50.0), and nghttp2 1.59.0. The record is in `tests/TEST-RESULTS.md`: 311,294 inputs, 0 failures. It is a project of [Proven Commons](https://github.com/Proven-Commons/mission), built to the verified bar published there.
 
 Status: in progress. The specification has not yet been approved by a reviewer apart from its author, so this is not verified.
 
@@ -65,6 +65,14 @@ From these the proofs derive that no code is a prefix of another and that no cod
 - **Time and memory.** The decoders are proved correct, not fast. The Huffman decoder looks each bit up in a list of 257 codes. Integer values have no upper bound unless a limit is given.
 - **Reading requests and printing answers in `Main.lean`.** The differential tests cover them.
 
+## Where other implementations differ
+
+The tests compare every answer with the three implementations and count each disagreement under its reason, confirmed against the model. There is one reason, and in every case this library refuses and the other answers:
+
+- **Integers written in more octets than they need.** An integer whose last continuation octet is 0 after another continuation octet, such as `1f 80 00` for 31 with a 5-bit prefix, is read by all three. Python `hpack` and nghttp2 read up to five continuation octets, and Go up to nine. This library refuses every such encoding, as section 5.1 allows, so each value has one encoding it accepts. The record counts 10,700 inputs this library refuses for this reason, among them string lengths written that way.
+
+The others also limit the values they read. Python `hpack` reads at most five continuation octets, and Go and nghttp2 read a table size as a 32-bit number. This library has no limit unless one is given with `decodeIntUpTo`. So the tests ask each oracle only for integers up to a limit it keeps, 2^N - 2 + 2^35 for Python `hpack` and 2^32 - 1 for Go and nghttp2, and give the tool the same limit.
+
 ## What you must trust
 
 - The Lean kernel and the five external kernels shipped with Lean, which all check the proofs.
@@ -79,7 +87,7 @@ This project has no dependencies beyond Lean itself.
 
 ## Re-check it
 
-Needs Linux, [elan](https://github.com/leanprover/elan), bubblewrap (`apt install bubblewrap`), Python 3 and a C compiler. The oracles also need Go and libnghttp2. The test script leaves out any it cannot build, and the record names them.
+Needs Linux, [elan](https://github.com/leanprover/elan), bubblewrap (`apt install bubblewrap`), Python 3 and a C compiler. The oracles also need pip (for Python `hpack`, pinned by hash), Go, and libnghttp2's headers (`apt install libnghttp2-dev`). The test script leaves out any it cannot build, and the record names them.
 
 ```
 lake build
@@ -89,6 +97,17 @@ python3 tests/plant_bugs.py
 ```
 
 `lake comparator --paranoid` builds the statements and the proofs in a sandbox. It checks that each theorem in `Proofs/` proves exactly the statement in `Spec.lean`, using only the axioms `propext`, `Classical.choice`, and `Quot.sound`, and replays it through every kernel shipped with Lean.
+
+The test script builds the tool and the oracles. Its model reads the Huffman code and the static table from the copy of RFC 7541 in `tests/`, checked by SHA-256, and must decode every example of Appendix C as the RFC does. It then sends these inputs:
+
+- the examples of Appendix C;
+- integers for every prefix size, around every power of two up to 2^70, with every value of the bits above the prefix, cut short, and with extra zero octets, with and without a limit;
+- every input of up to two octets to the Huffman decoder, every octet alone, random strings, and encodings with a bit flipped, EOS inserted, the padding extended, made of zeros or holding a zero, and the last octet cut;
+- string literals, raw and Huffman, cut short, with the H flag flipped, and with lengths written in more octets than they need;
+- every static index from 0 to 100, and some far past the table;
+- malformed requests, and CR LF line endings.
+
+It then rewrites `tests/TEST-RESULTS.md`. `tests/plant_bugs.py` plants sixteen bugs in a copy of the code, one at a time, and records in `tests/PLANTED-BUGS.md` how many failures the tests report for each, against the model alone. Every bug must be caught.
 
 ## Layout
 
