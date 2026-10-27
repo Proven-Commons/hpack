@@ -17,39 +17,64 @@ decreasing_by omega
 
 /-- `i` as an integer with an `n`-bit prefix (`1 ≤ n ≤ 8`). The bits of
     the first octet above the prefix hold `high`, for example the H flag
-    of a string literal. -/
+    of a string literal. For any other `n` the result is not specified:
+    section 5.1 allows only 1 to 8. -/
 def encodeInt (n high i : Nat) : List UInt8 :=
   let top := high % 2 ^ (8 - n) * 2 ^ n
   if i < 2 ^ n - 1 then [(top + i).toUInt8]
   else (top + (2 ^ n - 1)).toUInt8 :: encodeRest (i - (2 ^ n - 1))
 
+/-- The value of digits in base `2 ^ w`, most significant first. It
+    splits the digits in halves, so a long input takes close to linear
+    time instead of the quadratic time of adding one digit at a time to
+    a growing number. -/
+def ofDigits (w : Nat) (ds : List Nat) : Nat := go ds.length ds
+where
+  /-- `fuel` bounds the depth of the halving; the length is enough. -/
+  go : Nat → List Nat → Nat
+    | 0, _ => 0
+    | fuel + 1, ds =>
+      if ds.length ≤ 16 then ds.foldl (fun j d => j * 2 ^ w + d) 0
+      else
+        let h := ds.length / 2
+        (go fuel (ds.take h) <<< (w * (ds.length - h))) + go fuel (ds.drop h)
+
+/-- Splits off the octets after the prefix: the octets with the top bit
+    set, then the first without it. Gives their low seven bits, last
+    octet first, put in front of `acc`, and the octets after them. -/
+def splitRest : List UInt8 → List Nat → Option (List Nat × List UInt8)
+  | [], _ => none
+  | b :: bs, acc =>
+    if b.toNat < 128 then some (b.toNat :: acc, bs)
+    else splitRest bs (b.toNat % 128 :: acc)
+
 /-- The value of the octets after the prefix, and the octets after
     them. The last octet may be 0 only when it is the only one, so every
     value has one encoding. -/
-def decodeRest : List UInt8 → Option (Nat × List UInt8)
-  | [] => none
-  | b :: bs =>
-    if b.toNat < 128 then some (b.toNat, bs)
-    else match decodeRest bs with
-      | some (j, rest) => if j = 0 then none else some (b.toNat - 128 + 128 * j, rest)
-      | none => none
+def decodeRest (bs : List UInt8) : Option (Nat × List UInt8) :=
+  match splitRest bs [] with
+  | some (last :: more, rest) =>
+    if last = 0 ∧ more ≠ [] then none else some (ofDigits 7 (last :: more), rest)
+  | _ => none
 
-/-- An integer with an `n`-bit prefix (`1 ≤ n ≤ 8`) at the start of the
-    input, and the octets after it. The bits above the prefix are not
-    read. Fails when the input ends first, and when the encoding is
-    longer than it need be. -/
-def decodeInt (n : Nat) : List UInt8 → Option (Nat × List UInt8)
-  | [] => none
-  | b :: bs =>
-    if b.toNat % 2 ^ n < 2 ^ n - 1 then some (b.toNat % 2 ^ n, bs)
-    else match decodeRest bs with
-      | some (j, rest) => some (2 ^ n - 1 + j, rest)
-      | none => none
+/-- An integer with an `n`-bit prefix at the start of the input, and
+    the octets after it. The bits above the prefix are not read. Fails
+    when `n` is not from 1 to 8, when the input ends first, and when the
+    encoding is longer than it need be. -/
+def decodeInt (n : Nat) (b : List UInt8) : Option (Nat × List UInt8) :=
+  if n = 0 ∨ 8 < n then none
+  else match b with
+    | [] => none
+    | b :: bs =>
+      if b.toNat % 2 ^ n < 2 ^ n - 1 then some (b.toNat % 2 ^ n, bs)
+      else match decodeRest bs with
+        | some (j, rest) => some (2 ^ n - 1 + j, rest)
+        | none => none
 
 /-- `decodeInt` with a stated limit: a value above `max` is an error,
-    as section 5.1 allows ("Integer encodings that exceed implementation
-    limits -- in value or octet length -- MUST be treated as decoding
-    errors"). -/
+    as sections 5.1 and 7.4 ask ("Integer encodings that exceed
+    implementation limits -- in value or octet length -- MUST be treated
+    as decoding errors"). -/
 def decodeIntUpTo (n max : Nat) (b : List UInt8) : Option (Nat × List UInt8) :=
   match decodeInt n b with
   | some (i, rest) => if i ≤ max then some (i, rest) else none
@@ -129,10 +154,25 @@ def huffmanEncode (s : List UInt8) : List UInt8 :=
   let bits := s.flatMap symbolBits
   ofBits (bits ++ List.replicate ((8 - bits.length % 8) % 8) true)
 
-/-- The symbol whose code is `bits`, if there is one. -/
-def symbolOf (bits : List Bool) : Option Nat := codes.findIdx? (· == bits)
+/-- Each code with its symbol, from symbol `k` on. -/
+def indexed : List (List Bool) → Nat → List (List Bool × Nat)
+  | [], _ => []
+  | c :: cs, k => (c, k) :: indexed cs (k + 1)
 
-/-- Decodes bits, with `pending` the bits read since the last symbol. -/
+/-- The codes of each length from 0 to 30, with their symbols, so that
+    looking up some bits compares them with the codes of their length
+    only, not with all 257. -/
+def codesByLength : Array (List (List Bool × Nat)) :=
+  (Array.range 31).map fun l => (indexed codes 0).filter (·.1.length == l)
+
+/-- The symbol whose code is `bits`, if there is one. -/
+def symbolOf (bits : List Bool) : Option Nat :=
+  ((codesByLength[bits.length]?).getD []).lookup bits
+
+/-- Decodes bits, with `pending` the bits read since the last symbol.
+    No code is longer than 30 bits, so 30 pending bits that are no code
+    cannot become one: the input is refused there, which keeps `pending`
+    short whatever the input. -/
 def decodeBits : List Bool → List Bool → Option (List UInt8)
   | [], pending => if pending.length < 8 ∧ pending.all (· == true) then some [] else none
   | b :: bs, pending =>
@@ -143,7 +183,7 @@ def decodeBits : List Bool → List Bool → Option (List UInt8)
       else match decodeBits bs [] with
         | some out => some (s.toUInt8 :: out)
         | none => none
-    | none => decodeBits bs pending
+    | none => if pending.length < 30 then decodeBits bs pending else none
 
 /-- The octets whose Huffman encoding is `d`, or `none` when `d` is not
     one: it holds EOS, or ends in more than seven bits of padding, or in
@@ -169,9 +209,12 @@ def decodeString : List UInt8 → Option (List UInt8 × List UInt8)
     match decodeInt 7 (b :: bs) with
     | none => none
     | some (len, rest) =>
-      if len ≤ rest.length then
-        if b.toNat < 128 then some (rest.take len, rest.drop len)
-        else match huffmanDecode (rest.take len) with
+      -- `take` stops at the end of the input, so this costs at most the
+      -- length of the string, not of all the input left.
+      let data := rest.take len
+      if data.length = len then
+        if b.toNat < 128 then some (data, rest.drop len)
+        else match huffmanDecode data with
           | some s => some (s, rest.drop len)
           | none => none
       else none

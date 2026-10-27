@@ -26,7 +26,9 @@ read `error`.
                         name "a" and the literal as its value. Where the
                         literal ends is read from its length with
                         decode_integer; the octets after it are the
-                        rest.
+                        rest. The Decoder's limit on the size of a
+                        header list, 65,536 by default, is raised to
+                        2^62, so that long strings are compared too.
     strenc H HEX        a fresh hpack.Encoder encodes the header field
                         ("a", the octets) as never indexed, with
                         huffman=H; the answer is what it writes after
@@ -109,7 +111,8 @@ def answer(line):
             try:
                 length, used = decode_integer(data, 7)
                 end = used + length
-                headers = hpack.Decoder().decode(b"\x00\x01a" + data[:end], raw=True)
+                headers = hpack.Decoder(max_header_list_size=2 ** 62).decode(
+                    b"\x00\x01a" + data[:end], raw=True)
             except hpack.HPACKError:
                 return "FAIL"
             if len(headers) != 1 or headers[0][0] != b"a":

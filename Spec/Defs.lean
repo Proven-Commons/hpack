@@ -378,8 +378,8 @@ def HuffmanEncodes (s d : List UInt8) : Prop :=
 /-! ## String literals (section 5.2) -/
 
 /-- `b` is a string literal for the octets `s`: the H flag, the length
-    of the string data as an integer with a 7-bit prefix, and the string
-    data. With H = 0 the data is `s` itself; with H = 1 it is the Huffman
+    of the string data as an integer with a 7-bit prefix, in the fewest
+    octets as `intEncode` writes it, and the string data. With H = 0 the data is `s` itself; with H = 1 it is the Huffman
     encoding of `s`. -/
 def StringLiteral (huffman : Bool) (s b : List UInt8) : Prop :=
   if huffman then ∃ d, HuffmanEncodes s d ∧ b = intEncode 7 1 d.length ++ d

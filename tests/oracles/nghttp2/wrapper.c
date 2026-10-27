@@ -17,6 +17,12 @@
                         octets after those are the rest.
     huffdec HEX         the same, with the octets framed as a Huffman
                         string literal: H = 1 and their length.
+
+                        The inflater refuses a header field whose name
+                        and value together pass 65,536 octets
+                        (NGHTTP2_HD_MAX_NV in lib/nghttp2_hd.h), so a
+                        value over 65,535 octets is FAIL here, and
+                        tests/run_tests.py does not compare those.
     static I            the indexed header field I.
     intmax 5 MAX HEX    a dynamic table size update (top bits 001, then
                         the integer with a 5-bit prefix), with the

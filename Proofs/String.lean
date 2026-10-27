@@ -92,7 +92,7 @@ theorem decodeString_iff (b s rest : List UInt8) :
             subst h0
             refine ⟨false, Spec.intEncode 7 0 len ++ r.take len, ?_, ?_⟩
             · simp only [Spec.StringLiteral, Bool.false_eq_true, ↓reduceIte]
-              rw [List.length_take, Nat.min_eq_left hlen]
+              simp [hlen]
             · rw [he, List.append_assoc, List.take_append_drop]
           · rename_i hraw
             split at h
@@ -106,7 +106,7 @@ theorem decodeString_iff (b s rest : List UInt8) :
               refine ⟨true, Spec.intEncode 7 1 len ++ r.take len, ?_, ?_⟩
               · simp only [Spec.StringLiteral, ↓reduceIte]
                 refine ⟨r.take len, (huffmanDecode_iff _ _).mp hs, ?_⟩
-                rw [List.length_take, Nat.min_eq_left hlen]
+                simp [hlen]
               · rw [he, List.append_assoc, List.take_append_drop]
             · contradiction
         · contradiction
@@ -121,7 +121,7 @@ theorem decodeString_iff (b s rest : List UInt8) :
       have hraw : ((0 * 128 + o).toUInt8).toNat < 128 := (first_octet 0 o (by omega) ho).mpr rfl
       rw [List.append_assoc]
       rw [hx, List.cons_append] at hd ⊢
-      simp only [decodeString, hd, hraw, ↓reduceIte, List.length_append]
+      simp only [decodeString, hd, hraw, ↓reduceIte]
       simp
     · simp only [Spec.StringLiteral, ↓reduceIte] at hlit
       obtain ⟨d, hdl, rfl⟩ := hlit
@@ -134,7 +134,7 @@ theorem decodeString_iff (b s rest : List UInt8) :
       have hs : huffmanDecode d = some s := (huffmanDecode_iff d s).mpr hdl
       rw [List.append_assoc]
       rw [hx, List.cons_append] at hd ⊢
-      simp only [decodeString, hd, hraw, ↓reduceIte, List.length_append]
+      simp only [decodeString, hd, hraw, ↓reduceIte]
       simp [hs]
 
 theorem decodeString_encode (huffman : Bool) (s rest : List UInt8) :

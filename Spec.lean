@@ -24,7 +24,8 @@ theorem encodeInt_eq (n high i : Nat) (hn : 1 ≤ n ∧ n ≤ 8) (hhigh : high <
 /-- The decoder accepts exactly what the encoding pseudocode writes,
     whatever the bits above the prefix are, and gives back the value and
     the octets after it. So it never reads past the end of the input, and
-    each value has exactly one encoding it accepts. -/
+    each value has exactly one encoding it accepts for each choice of
+    the bits above the prefix. -/
 theorem decodeInt_iff (n : Nat) (b : List UInt8) (i : Nat) (rest : List UInt8)
     (hn : 1 ≤ n ∧ n ≤ 8) :
     Hpack.decodeInt n b = some (i, rest) ↔
@@ -37,11 +38,11 @@ theorem decodeInt_rfc (n : Nat) (b : List UInt8) (i : Nat) (rest : List UInt8)
     Hpack.decodeInt n b = some (i, rest) → intDecode n b = some (i, rest) := sorry
 
 /-- What the decoding pseudocode reads, the decoder reads the same way,
-    except an encoding whose last octet is 0 after another continuation
-    octet: one longer than it need be, which section 5.1 lets a decoder
-    treat as an error ("Integer encodings that exceed implementation
-    limits -- in value or octet length -- MUST be treated as decoding
-    errors"). -/
+    except an encoding whose last octet is 0 and follows at least one
+    octet with the continuation bit set: an encoding longer than it need
+    be. RFC 7541 does not require minimal encodings, and other decoders
+    read these; this one refuses them, so that each value has one
+    encoding. That choice is stricter than the RFC. -/
 theorem decodeInt_of_rfc (n : Nat) (b : List UInt8) (i : Nat) (rest : List UInt8)
     (hn : 1 ≤ n ∧ n ≤ 8) :
     intDecode n b = some (i, rest) →
@@ -54,6 +55,12 @@ theorem decodeIntUpTo_iff (n max : Nat) (b : List UInt8) (i : Nat) (rest : List 
     (hn : 1 ≤ n ∧ n ≤ 8) :
     Hpack.decodeIntUpTo n max b = some (i, rest) ↔
       i ≤ max ∧ ∃ high, high < 2 ^ (8 - n) ∧ b = intEncode n high i ++ rest := sorry
+
+/-- A prefix size outside 1 to 8, which section 5.1 does not allow
+    ("The prefix size, N, is always between 1 and 8 bits"), is refused,
+    with or without a limit. -/
+theorem decodeInt_prefix (n max : Nat) (b : List UInt8) (hn : n = 0 ∨ 8 < n) :
+    Hpack.decodeInt n b = none ∧ Hpack.decodeIntUpTo n max b = none := sorry
 
 /-! ## The Huffman code (section 5.2, Appendix B) -/
 
@@ -85,7 +92,8 @@ theorem encodeString_spec (huffman : Bool) (s : List UInt8) :
 
 /-- The decoder accepts exactly a string literal followed by anything,
     and gives back its octets and what follows. So it never reads past
-    the end of the input. -/
+    the end of the input. `StringLiteral` writes the length in the fewest
+    octets, so a length written in more is refused. -/
 theorem decodeString_iff (b s rest : List UInt8) :
     Hpack.decodeString b = some (s, rest) ↔
       ∃ huffman lit, StringLiteral huffman s lit ∧ b = lit ++ rest := sorry
@@ -113,7 +121,7 @@ theorem rfc_integers :
     Hpack.decodeInt 5 [0x1f, 0x9a, 0x0a] = some (1337, []) ∧
     Hpack.decodeInt 8 [0x2a] = some (42, []) := sorry
 
-/-- The Huffman encoded strings of Appendix C.4 and C.6. -/
+/-- The twelve Huffman encoded strings of Appendix C.4 and C.6. -/
 theorem rfc_huffman :
     Hpack.huffmanEncode (ascii "www.example.com") =
       [0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff] ∧
@@ -127,6 +135,9 @@ theorem rfc_huffman :
     Hpack.huffmanEncode (ascii "Mon, 21 Oct 2013 20:13:21 GMT") =
       [0xd0, 0x7a, 0xbe, 0x94, 0x10, 0x54, 0xd4, 0x44, 0xa8, 0x20, 0x05, 0x95,
        0x04, 0x0b, 0x81, 0x66, 0xe0, 0x82, 0xa6, 0x2d, 0x1b, 0xff] ∧
+    Hpack.huffmanEncode (ascii "Mon, 21 Oct 2013 20:13:22 GMT") =
+      [0xd0, 0x7a, 0xbe, 0x94, 0x10, 0x54, 0xd4, 0x44, 0xa8, 0x20, 0x05, 0x95,
+       0x04, 0x0b, 0x81, 0x66, 0xe0, 0x84, 0xa6, 0x2d, 0x1b, 0xff] ∧
     Hpack.huffmanEncode (ascii "https://www.example.com") =
       [0x9d, 0x29, 0xad, 0x17, 0x18, 0x63, 0xc7, 0x8f, 0x0b, 0x97, 0xc8, 0xe9,
        0xae, 0x82, 0xae, 0x43, 0xd3] ∧

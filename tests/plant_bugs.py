@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Check that the differential tests catch planted bugs.
 
-Each bug is a one-line change to Hpack/Basic.lean. The script copies
+Each bug is a one-line change to Hpack/Basic.lean, or to Main.lean
+where its description says so. The script copies
 the project to a temporary folder, plants one bug at a time, runs
 tests/run_tests.py there with a small count and without the oracles,
 and records how many failures the tests report. So every failure
@@ -46,11 +47,14 @@ BUGS = [
      "    if b.toNat % 2 ^ n < 2 ^ n - 1 then some (b.toNat % 2 ^ n, bs)",
      "    if b.toNat % 2 ^ n < 2 ^ n - 1 then some (b.toNat, bs)"),
     ("non-minimal integers are accepted",
-     "      | some (j, rest) => if j = 0 then none else some (b.toNat - 128 + 128 * j, rest)",
-     "      | some (j, rest) => some (b.toNat - 128 + 128 * j, rest)"),
+     "    if last = 0 ∧ more ≠ [] then none else some (ofDigits 7 (last :: more), rest)",
+     "    if False then none else some (ofDigits 7 (last :: more), rest)"),
     ("the continuation bit is tested as 0x40, not 0x80",
-     "    if b.toNat < 128 then some (b.toNat, bs)",
-     "    if b.toNat < 64 then some (b.toNat, bs)"),
+     "    if b.toNat < 128 then some (b.toNat :: acc, bs)",
+     "    if b.toNat < 64 then some (b.toNat :: acc, bs)"),
+    ("long integers: the first half is shifted by the length of the first half, not the second",
+     "        (go fuel (ds.take h) <<< (w * (ds.length - h))) + go fuel (ds.drop h)",
+     "        (go fuel (ds.take h) <<< (w * h)) + go fuel (ds.drop h)"),
     ("the encoder writes 128 as a last octet",
      "  if j < 128 then [j.toUInt8] else (j % 128 + 128).toUInt8 :: encodeRest (j / 128)",
      "  if j ≤ 128 then [j.toUInt8] else (j % 128 + 128).toUInt8 :: encodeRest (j / 128)"),
@@ -72,18 +76,29 @@ BUGS = [
     ("one Huffman table entry is wrong: the code of ~ ends in e, not d",
      "(0x1ffd, 13)",
      "(0x1ffe, 13)"),
-    ("the string length check is off by one and reads past the end",
-     "      if len ≤ rest.length then",
-     "      if len ≤ rest.length + 1 then"),
+    ("string data one octet short is accepted",
+     "      if data.length = len then",
+     "      if data.length + 1 ≥ len then"),
     ("the H flag is ignored",
-     "        if b.toNat < 128 then some (rest.take len, rest.drop len)",
-     "        if b.toNat < 256 then some (rest.take len, rest.drop len)"),
+     "        if b.toNat < 128 then some (data, rest.drop len)",
+     "        if b.toNat < 256 then some (data, rest.drop len)"),
+    ("the Huffman lookup compares bits with the codes one bit longer",
+     "  (Array.range 31).map fun l => (indexed codes 0).filter (·.1.length == l)",
+     "  (Array.range 31).map fun l => (indexed codes 0).filter (·.1.length == l + 1)"),
     ("a Huffman literal gives the length of the string, not of its encoding",
      "    encodeInt 7 1 d.length ++ d",
      "    encodeInt 7 1 s.length ++ d"),
     ("the static table is indexed from 0",
      "  if i = 0 then none else staticTable[i - 1]?",
      "  if i = 0 then none else staticTable[i]?"),
+    ("Main.lean: `intmax` takes any prefix size",
+     "  | [\"intmax\", n, m, h] => do\n    let n ← prefixSize n",
+     "  | [\"intmax\", n, m, h] => do\n    let n ← decimal n",
+     "Main.lean"),
+    ("Main.lean: `huffman-decode` exits with 0 when the input does not decode",
+     "      | none => IO.eprintln \"not a Huffman encoding\"; return 1",
+     "      | none => IO.eprintln \"not a Huffman encoding\"; return 0",
+     "Main.lean"),
 ]
 
 
@@ -118,17 +133,18 @@ def main():
         copy = Path(tmp) / "hpack"
         shutil.copytree(ROOT, copy, symlinks=True,
                         ignore=shutil.ignore_patterns("PLANTED-BUGS.md", "__pycache__"))
-        code = copy / CODE
-        original = code.read_text(encoding="utf-8")
         n, err = failures(copy, args.count)
         rows.append(("none", n))
         if n != 0:
             missed += 1
         print(f"none: {n} failures" + (" (did not build or did not finish)" if err else ""),
               flush=True)
-        for what, line, bug in BUGS:
+        for what, line, bug, *where in BUGS:
+            name = where[0] if where else CODE
+            code = copy / name
+            original = code.read_text(encoding="utf-8")
             if original.count(line) != 1:
-                sys.exit(f"{CODE} no longer holds, once, the line for {what!r}: {line}")
+                sys.exit(f"{name} no longer holds, once, the line for {what!r}: {line}")
             code.write_text(original.replace(line, bug), encoding="utf-8")
             n, err = failures(copy, args.count)
             code.write_text(original, encoding="utf-8")
@@ -140,8 +156,8 @@ def main():
             if err:
                 print(err[-2000:], flush=True)
     lines = ["# Planted bugs", "",
-             "Written by `tests/plant_bugs.py`. Each bug is a one-line change to "
-             f"`{CODE}`, tested with `tests/run_tests.py --count {args.count} --no-oracles`, "
+             "Written by `tests/plant_bugs.py`. Each bug is a change of one line, or two for "
+             f"the first `Main.lean` bug, to `{CODE}` unless it names `Main.lean`, tested with `tests/run_tests.py --count {args.count} --no-oracles`, "
              "which builds only the executable and compares it with the model alone. Every bug "
              "must give failures, and the unchanged code none. A bug that does not build, or a "
              "run that gives up or dies, counts as missed.", "",

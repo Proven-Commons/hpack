@@ -26,14 +26,164 @@ theorem encodeRest_eq (j : Nat) : encodeRest j = (Spec.intOctets.rest j).map Nat
     · simp [h, show ¬ j ≥ 128 by omega]
     · simp [h, show j ≥ 128 by omega, ih (j / 128) (by omega)]
 
-theorem decodeRest_encodeRest (j : Nat) (rest : List UInt8) :
-    decodeRest (encodeRest j ++ rest) = some (j, rest) := by
+/-- `decodeRest` as it was first written: one octet at a time, the
+    value built from the last octet back. The proofs are about this form,
+    and `decodeRest_eq_rec` shows that the code computes the same. -/
+def decodeRestRec : List UInt8 → Option (Nat × List UInt8)
+  | [] => none
+  | b :: bs =>
+    if b.toNat < 128 then some (b.toNat, bs)
+    else match decodeRestRec bs with
+      | some (j, rest) => if j = 0 then none else some (b.toNat - 128 + 128 * j, rest)
+      | none => none
+
+/-- The digits `splitRest` gives, most significant first, without the
+    accumulator. -/
+def splitRestRec : List UInt8 → Option (List Nat × List UInt8)
+  | [] => none
+  | b :: bs =>
+    if b.toNat < 128 then some ([b.toNat], bs)
+    else (splitRestRec bs).map fun (ds, r) => (ds ++ [b.toNat % 128], r)
+
+theorem splitRest_eq (bs : List UInt8) (acc : List Nat) :
+    splitRest bs acc = (splitRestRec bs).map fun (ds, r) => (ds ++ acc, r) := by
+  induction bs generalizing acc with
+  | nil => rfl
+  | cons b bs ih =>
+    simp only [splitRest, splitRestRec]
+    split
+    · rfl
+    · rw [ih]
+      cases splitRestRec bs <;> simp
+
+theorem splitRestRec_ne_nil {bs : List UInt8} {ds : List Nat} {r : List UInt8}
+    (h : splitRestRec bs = some (ds, r)) : ds ≠ [] := by
+  induction bs generalizing ds r with
+  | nil => simp [splitRestRec] at h
+  | cons b bs ih =>
+    simp only [splitRestRec] at h
+    split at h
+    · cases h
+      simp
+    · cases hs : splitRestRec bs with
+      | none => simp [hs] at h
+      | some p =>
+        obtain ⟨ds', r'⟩ := p
+        simp only [hs, Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+        rw [← h.1]
+        simp
+
+/-- The value of digits in base `2 ^ w`, most significant first, one
+    digit at a time. -/
+def digitsVal (w : Nat) (ds : List Nat) : Nat := ds.foldl (fun j d => j * 2 ^ w + d) 0
+
+theorem foldl_digits (w : Nat) (ds : List Nat) (a : Nat) :
+    ds.foldl (fun j d => j * 2 ^ w + d) a = a * 2 ^ (w * ds.length) + digitsVal w ds := by
+  induction ds generalizing a with
+  | nil => simp [digitsVal]
+  | cons d ds ih =>
+    simp only [List.foldl_cons, List.length_cons, digitsVal]
+    rw [ih, ih (0 * 2 ^ w + d)]
+    rw [Nat.mul_succ, Nat.pow_add, Nat.zero_mul, Nat.zero_add, Nat.add_mul, Nat.mul_assoc,
+      Nat.mul_comm (2 ^ w) (2 ^ (w * ds.length)), Nat.add_assoc]
+
+theorem digitsVal_append (w : Nat) (l1 l2 : List Nat) :
+    digitsVal w (l1 ++ l2) = digitsVal w l1 * 2 ^ (w * l2.length) + digitsVal w l2 := by
+  unfold digitsVal
+  rw [List.foldl_append, foldl_digits]
+  rfl
+
+theorem ofDigits_go (w fuel : Nat) (ds : List Nat) (h : ds.length ≤ fuel) :
+    ofDigits.go w fuel ds = digitsVal w ds := by
+  induction fuel generalizing ds with
+  | zero =>
+    have : ds = [] := List.eq_nil_of_length_eq_zero (by omega)
+    subst this
+    rfl
+  | succ fuel ih =>
+    unfold ofDigits.go
+    split
+    · rfl
+    · rename_i hl
+      simp only [Nat.shiftLeft_eq]
+      rw [ih _ (by simp; omega), ih _ (by simp; omega)]
+      conv => rhs; rw [← List.take_append_drop (ds.length / 2) ds]
+      rw [digitsVal_append, List.length_drop]
+
+theorem ofDigits_eq (w : Nat) (ds : List Nat) : ofDigits w ds = digitsVal w ds :=
+  ofDigits_go w _ ds (Nat.le_refl _)
+
+theorem digitsVal_cons_pos (w last : Nat) (more : List Nat) (h : last ≠ 0) :
+    digitsVal w (last :: more) ≠ 0 := by
+  have := digitsVal_append w [last] more
+  simp only [List.singleton_append] at this
+  rw [this]
+  have : digitsVal w [last] = last := by simp [digitsVal]
+  rw [this]
+  have := Nat.two_pow_pos (w * more.length)
+  have : last * 2 ^ (w * more.length) ≠ 0 := Nat.mul_ne_zero h (by omega)
+  omega
+
+theorem decodeRest_split (bs : List UInt8) :
+    (match splitRestRec bs with
+      | some (last :: more, rest) =>
+        if last = 0 ∧ more ≠ [] then none else some (digitsVal 7 (last :: more), rest)
+      | _ => none) = decodeRestRec bs := by
+  induction bs with
+  | nil => rfl
+  | cons b bs ih =>
+    have hb := toNat_lt b
+    by_cases hb128 : b.toNat < 128
+    · simp [splitRestRec, decodeRestRec, hb128, digitsVal]
+    · simp only [splitRestRec, decodeRestRec, hb128, ↓reduceIte]
+      cases hs : splitRestRec bs with
+      | none =>
+        rw [hs] at ih
+        simp only at ih
+        rw [← ih]
+        simp
+      | some p =>
+        obtain ⟨ds, r⟩ := p
+        have hne := splitRestRec_ne_nil hs
+        obtain ⟨last, more, rfl⟩ := List.exists_cons_of_ne_nil hne
+        rw [hs] at ih
+        simp only at ih
+        rw [← ih]
+        simp only [Option.map_some, List.cons_append]
+        by_cases hl : last = 0
+        · subst hl
+          by_cases hm : more = []
+          · subst hm
+            simp [digitsVal]
+          · simp [hm]
+        · have hpos := digitsVal_cons_pos 7 last more hl
+          simp only [hl, false_and, ↓reduceIte, ne_eq, hpos]
+          rw [show last :: (more ++ [b.toNat % 128]) = (last :: more) ++ [b.toNat % 128] by rfl,
+            digitsVal_append]
+          simp only [List.length_singleton, Nat.mul_one, Option.some.injEq, Prod.mk.injEq, and_true]
+          have : digitsVal 7 [b.toNat % 128] = b.toNat % 128 := by simp [digitsVal]
+          rw [this]
+          omega
+
+theorem decodeRest_eq_rec (bs : List UInt8) : decodeRest bs = decodeRestRec bs := by
+  rw [← decodeRest_split]
+  unfold decodeRest
+  rw [splitRest_eq]
+  cases splitRestRec bs with
+  | none => rfl
+  | some p =>
+    obtain ⟨ds, r⟩ := p
+    simp only [Option.map_some, List.append_nil]
+    split <;> simp_all [ofDigits_eq]
+
+theorem decodeRestRec_encodeRest (j : Nat) (rest : List UInt8) :
+    decodeRestRec (encodeRest j ++ rest) = some (j, rest) := by
   induction j using Nat.strongRecOn with
   | ind j ih =>
     rw [encodeRest]
     by_cases h : j < 128
-    · simp only [h, ↓reduceIte, List.singleton_append, decodeRest, toNat_toUInt8 (by omega : j < 256)]
-    · simp only [h, ↓reduceIte, List.cons_append, decodeRest,
+    · simp only [h, ↓reduceIte, List.singleton_append, decodeRestRec, toNat_toUInt8 (by omega : j < 256)]
+    · simp only [h, ↓reduceIte, List.cons_append, decodeRestRec,
         toNat_toUInt8 (by omega : j % 128 + 128 < 256)]
       rw [ih (j / 128) (by omega)]
       simp only [show ¬ (j % 128 + 128 < 128) by omega, ↓reduceIte,
@@ -41,12 +191,12 @@ theorem decodeRest_encodeRest (j : Nat) (rest : List UInt8) :
       congr 2
       omega
 
-theorem eq_of_decodeRest {bs : List UInt8} {j : Nat} {rest : List UInt8}
-    (h : decodeRest bs = some (j, rest)) : bs = encodeRest j ++ rest := by
+theorem eq_of_decodeRestRec {bs : List UInt8} {j : Nat} {rest : List UInt8}
+    (h : decodeRestRec bs = some (j, rest)) : bs = encodeRest j ++ rest := by
   induction bs generalizing j with
-  | nil => simp [decodeRest] at h
+  | nil => simp [decodeRestRec] at h
   | cons b bs ih =>
-    simp only [decodeRest] at h
+    simp only [decodeRestRec] at h
     split at h
     · rename_i hb
       cases h
@@ -71,6 +221,15 @@ theorem eq_of_decodeRest {bs : List UInt8} {j : Nat} {rest : List UInt8}
           · congr 2
             omega
       · contradiction
+
+theorem decodeRest_encodeRest (j : Nat) (rest : List UInt8) :
+    decodeRest (encodeRest j ++ rest) = some (j, rest) := by
+  rw [decodeRest_eq_rec, decodeRestRec_encodeRest]
+
+theorem eq_of_decodeRest {bs : List UInt8} {j : Nat} {rest : List UInt8}
+    (h : decodeRest bs = some (j, rest)) : bs = encodeRest j ++ rest := by
+  rw [decodeRest_eq_rec] at h
+  exact eq_of_decodeRestRec h
 
 theorem decodeRest_iff (bs : List UInt8) (j : Nat) (rest : List UInt8) :
     decodeRest bs = some (j, rest) ↔ bs = encodeRest j ++ rest :=
@@ -100,6 +259,29 @@ theorem octet_split (n : Nat) (hn : 1 ≤ n ∧ n ≤ 8) (b : UInt8) :
 
 theorem pow_pos' (n : Nat) : 0 < 2 ^ n := Nat.two_pow_pos n
 
+theorem decodeInt_nil (n : Nat) : decodeInt n [] = none := by
+  unfold decodeInt
+  split <;> rfl
+
+theorem decodeInt_cons (n : Nat) (hn : 1 ≤ n ∧ n ≤ 8) (p : UInt8) (bs : List UInt8) :
+    decodeInt n (p :: bs) =
+      if p.toNat % 2 ^ n < 2 ^ n - 1 then some (p.toNat % 2 ^ n, bs)
+      else match decodeRest bs with
+        | some (j, rest) => some (2 ^ n - 1 + j, rest)
+        | none => none := by
+  unfold decodeInt
+  simp only [show ¬(n = 0 ∨ 8 < n) by omega, ↓reduceIte]
+  rfl
+
+theorem decodeInt_prefix (n max : Nat) (b : List UInt8) (hn : n = 0 ∨ 8 < n) :
+    decodeInt n b = none ∧ decodeIntUpTo n max b = none := by
+  have h : decodeInt n b = none := by
+    unfold decodeInt
+    simp only [hn, ↓reduceIte]
+  refine ⟨h, ?_⟩
+  unfold decodeIntUpTo
+  rw [h]
+
 /-! ### The statements -/
 
 theorem encodeInt_eq (n high i : Nat) (_hn : 1 ≤ n ∧ n ≤ 8) (hhigh : high < 2 ^ (8 - n)) :
@@ -119,12 +301,12 @@ theorem decodeInt_iff (n : Nat) (b : List UInt8) (i : Nat) (rest : List UInt8)
   constructor
   · intro h
     cases b with
-    | nil => simp [decodeInt] at h
+    | nil => simp [decodeInt_nil] at h
     | cons p bs =>
       obtain ⟨hhigh, hsplit⟩ := octet_split n hn p
       refine ⟨p.toNat / 2 ^ n, hhigh, ?_⟩
       rw [← encodeInt_eq n _ i hn hhigh]
-      simp only [decodeInt] at h
+      rw [decodeInt_cons n hn] at h
       unfold encodeInt
       rw [Nat.mod_eq_of_lt hhigh]
       by_cases hp : p.toNat % 2 ^ n < 2 ^ n - 1
@@ -156,9 +338,9 @@ theorem decodeInt_iff (n : Nat) (b : List UInt8) (i : Nat) (rest : List UInt8)
     rw [Nat.mod_eq_of_lt hhigh]
     by_cases h : i < 2 ^ n - 1
     · obtain ⟨h1, h2, _⟩ := first_toNat n high i hn hhigh (by omega)
-      simp only [h, ↓reduceIte, List.singleton_append, decodeInt, h1, h2]
+      simp only [h, ↓reduceIte, List.singleton_append, decodeInt_cons n hn, h1, h2]
     · obtain ⟨h1, h2, _⟩ := first_toNat n high (2 ^ n - 1) hn hhigh (by omega)
-      simp only [h, ↓reduceIte, List.cons_append, decodeInt, h1, h2, Nat.lt_irrefl,
+      simp only [h, ↓reduceIte, List.cons_append, decodeInt_cons n hn, h1, h2, Nat.lt_irrefl,
         decodeRest_encodeRest]
       congr 2
       omega
@@ -222,7 +404,9 @@ theorem loop_cases (bs : List UInt8) (acc m i : Nat) (rest : List UInt8)
           simp
         · left
           refine ⟨b.toNat - 128 + 128 * j', ?_, ?_⟩
-          · simp [decodeRest, show ¬ b.toNat < 128 by omega, hj', hj0]
+          · rw [decodeRest_eq_rec]
+            rw [decodeRest_eq_rec] at hj'
+            simp [decodeRestRec, show ¬ b.toNat < 128 by omega, hj', hj0]
           · rw [hi, Nat.pow_add]
             have : (b.toNat - 128 + 128 * j') * 2 ^ m =
                 (b.toNat % 128) * 2 ^ m + j' * (2 ^ m * 2 ^ 7) := by
@@ -237,11 +421,12 @@ theorem loop_cases (bs : List UInt8) (acc m i : Nat) (rest : List UInt8)
       cases h
       left
       refine ⟨b.toNat, ?_, ?_⟩
-      · simp [decodeRest, show b.toNat < 128 by omega]
+      · rw [decodeRest_eq_rec]
+        simp [decodeRestRec, show b.toNat < 128 by omega]
       · rw [Nat.mod_eq_of_lt (by omega)]
 
 theorem decodeInt_of_rfc (n : Nat) (b : List UInt8) (i : Nat) (rest : List UInt8)
-    (_hn : 1 ≤ n ∧ n ≤ 8) :
+    (hn : 1 ≤ n ∧ n ≤ 8) :
     Spec.intDecode n b = some (i, rest) →
       decodeInt n b = some (i, rest) ∨
       ∃ pre c, pre ≠ [] ∧ 128 ≤ c.toNat ∧ b = pre ++ [c, 0] ++ rest := by
@@ -254,7 +439,7 @@ theorem decodeInt_of_rfc (n : Nat) (b : List UInt8) (i : Nat) (rest : List UInt8
     · rename_i hp
       cases h
       left
-      simp [decodeInt, hp]
+      simp [decodeInt_cons n hn, hp]
     · rename_i hp
       rcases loop_cases bs _ 0 i rest h with ⟨j, hj, hi⟩ | ⟨pre, c, hc, rfl⟩
       · left
@@ -262,7 +447,7 @@ theorem decodeInt_of_rfc (n : Nat) (b : List UInt8) (i : Nat) (rest : List UInt8
         have : p.toNat % 2 ^ n = 2 ^ n - 1 := by
           have := Nat.mod_lt p.toNat hpos
           omega
-        simp [decodeInt, hj, hi, this]
+        simp [decodeInt_cons n hn, hj, hi, this]
       · right
         exact ⟨p :: pre, c, by simp, hc, by simp⟩
 

@@ -144,8 +144,58 @@ theorem prefix_free {i j : Nat} (hi : i < codes.length) (hj : j < codes.length) 
   · exact hij h3
   · exact absurd hx (by simpa using h3 hl)
 
+theorem lookup_indexed (l : List (List Bool)) (k : Nat) (bits : List Bool) :
+    ((indexed l k).filter (·.1.length == bits.length)).lookup bits =
+      (l.findIdx? (· == bits)).map (· + k) := by
+  induction l generalizing k with
+  | nil => rfl
+  | cons c cs ih =>
+    rw [indexed, List.filter_cons, List.findIdx?_cons]
+    by_cases hc : c = bits
+    · subst hc
+      simp only [beq_self_eq_true, ↓reduceIte, Option.map_some, Nat.zero_add]
+      rw [List.lookup_cons]
+      simp
+    · have h1 : (c == bits) = false := by simpa using hc
+      have h2 : (bits == c) = false := by
+        cases h : bits == c
+        · rfl
+        · exact absurd (beq_iff_eq.mp h).symm hc
+      rw [h1]
+      simp only [Bool.false_eq_true, ↓reduceIte, Option.map_map]
+      have e : ((· + k) ∘ (· + 1)) = (· + (k + 1)) := by funext x; simp only [Function.comp_apply]; omega
+      rw [e, ← ih (k + 1)]
+      split
+      · rw [List.lookup_cons, h2]
+      · rfl
+
+theorem codes_short : ∀ c ∈ codes, c.length ≤ 30 := by
+  intro c hc
+  unfold codes at hc
+  obtain ⟨⟨x, l⟩, hm, rfl⟩ := List.mem_map.mp hc
+  rw [toBits_length]
+  have : ∀ p ∈ huffmanTable, p.2 ≤ 30 := by decide +kernel
+  exact this _ hm
+
+theorem symbolOf_eq (bits : List Bool) : symbolOf bits = codes.findIdx? (· == bits) := by
+  unfold symbolOf codesByLength
+  rw [Array.getElem?_map, Array.getElem?_range]
+  by_cases h : bits.length < 31
+  · simp only [h, ↓reduceIte, Option.map_some, Option.getD_some]
+    rw [lookup_indexed]
+    simp
+  · simp only [h, ↓reduceIte, Option.map_none, Option.getD_none]
+    rw [show List.lookup bits ([] : List (List Bool × Nat)) = none from rfl, eq_comm]
+    rw [List.findIdx?_eq_none_iff]
+    intro c hc
+    have := codes_short c hc
+    cases he : c == bits
+    · rfl
+    · rw [beq_iff_eq.mp he] at this
+      omega
+
 theorem symbolOf_self {i : Nat} (hi : i < codes.length) : symbolOf codes[i] = some i := by
-  unfold symbolOf
+  rw [symbolOf_eq]
   rw [List.findIdx?_eq_some_iff_getElem]
   refine ⟨hi, by simp, fun j hji => ?_⟩
   simp only [beq_iff_eq]
@@ -158,8 +208,7 @@ theorem symbolOf_self {i : Nat} (hi : i < codes.length) : symbolOf codes[i] = so
 
 theorem symbolOf_some {bits : List Bool} {s : Nat} (h : symbolOf bits = some s) :
     ∃ hs : s < codes.length, codes[s] = bits := by
-  unfold symbolOf at h
-  rw [List.findIdx?_eq_some_iff_getElem] at h
+  rw [symbolOf_eq, List.findIdx?_eq_some_iff_getElem] at h
   obtain ⟨hs, heq, _⟩ := h
   exact ⟨hs, by simpa using heq⟩
 
@@ -326,8 +375,10 @@ theorem decodeBits_sound (bits pending : List Bool) (s : List UInt8)
           simp
         · contradiction
     · rename_i hnone
-      obtain ⟨k, hk, h'⟩ := ih _ s h
-      exact ⟨k, hk, by simpa using h'⟩
+      split at h
+      · obtain ⟨k, hk, h'⟩ := ih _ s h
+        exact ⟨k, hk, by simpa using h'⟩
+      · exact absurd h (Option.some_ne_none _).symm
 
 theorem decodeBits_ones (i j : Nat) (h : i + j < 8) :
     decodeBits (List.replicate j true) (List.replicate i true) = some [] := by
@@ -339,6 +390,7 @@ theorem decodeBits_ones (i j : Nat) (h : i + j < 8) :
     rw [show List.replicate i true ++ [true] = List.replicate (i + 1) true by
       rw [List.replicate_succ']]
     rw [symbolOf_ones (by omega)]
+    simp only [List.length_replicate, show i + 1 < 30 by omega, ↓reduceIte]
     exact ih (i + 1) (by omega)
 
 /-- Reading the rest of a code, after its first bits. -/
@@ -373,7 +425,14 @@ theorem decodeBits_code {c : Nat} (hc : c < 256) (p q tail : List Bool)
             have hql : 0 < q.length := List.length_pos_iff.mpr hq'
             omega
           · exact prefix_free hsl hcl hsc hpre
+      have hlen : (p ++ [b]).length < 30 := by
+        have h1 := congrArg List.length hpq
+        have h2 := codes_short _ (List.getElem_mem hcl)
+        have hql : 0 < q.length := List.length_pos_iff.mpr hq'
+        simp only [List.length_append, List.length_cons, List.length_nil] at h1 ⊢
+        omega
       rw [hnone]
+      simp only [hlen, ↓reduceIte]
       exact ih (p ++ [b]) (by simpa using hpq) hq'
 
 theorem decodeBits_complete (s : List UInt8) (k : Nat) (hk : k < 8) :

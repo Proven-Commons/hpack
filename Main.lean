@@ -5,10 +5,12 @@
     hpack huffman-decode HEX
     hpack string-decode HEX
 
-  print the Huffman encoding of a text in hex, the text a Huffman
-  encoding decodes to, or the octets of the string literal at the start
-  of some octets and the hex of what follows. They exit with 1 when the
-  input does not decode.
+  print, in hex: the Huffman encoding of a text (its UTF-8 octets); the
+  octets a Huffman encoding decodes to; or the octets of the string
+  literal at the start of some octets, then the octets after it. HEX is
+  lower-case hex digits in pairs, or `-` for no octets. They exit with 1
+  when the input does not decode, and with 2 when HEX is malformed or
+  the arguments are wrong.
 
     hpack serve
 
@@ -155,12 +157,18 @@ def main (args : List String) : IO UInt32 := do
     IO.println (toHex (huffmanEncode (utf8 text)))
     return 0
   | ["huffman-decode", h] =>
-    match (fromHex h).bind huffmanDecode with
-    | some s => IO.println (toHex s); return 0
-    | none => IO.eprintln "not a Huffman encoding"; return 1
+    match fromHex h with
+    | none => IO.eprintln "not lower-case hex digits in pairs"; return 2
+    | some d =>
+      match huffmanDecode d with
+      | some s => IO.println (toHex s); return 0
+      | none => IO.eprintln "not a Huffman encoding"; return 1
   | ["string-decode", h] =>
-    match (fromHex h).bind decodeString with
-    | some (s, rest) => IO.println s!"{toHex s} {toHex rest}"; return 0
-    | none => IO.eprintln "not a string literal"; return 1
+    match fromHex h with
+    | none => IO.eprintln "not lower-case hex digits in pairs"; return 2
+    | some d =>
+      match decodeString d with
+      | some (s, rest) => IO.println s!"{toHex s} {toHex rest}"; return 0
+      | none => IO.eprintln "not a string literal"; return 1
   | ["serve"] => serve; return 0
   | _ => IO.eprintln usage; return 2

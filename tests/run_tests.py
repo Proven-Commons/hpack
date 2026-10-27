@@ -24,10 +24,10 @@ Its answers are checked two ways.
 
    One rule is the code's, not the RFC's: `decodeInt` refuses an
    integer whose last continuation octet is 0x00 after another
-   continuation octet, an encoding longer than it need be. Section 5.1
-   lets a decoder treat "integer encodings that exceed implementation
-   limits -- in value or octet length" as errors, and `decode_int`
-   applies the rule with `minimal=True`.
+   continuation octet, an encoding longer than it need be. RFC 7541
+   does not require minimal encodings; refusing them is this library's
+   choice, stricter than the RFC, and `decode_int` applies the rule
+   with `minimal=True`.
 
 2. Against three oracles, on every request each can answer:
 
@@ -89,7 +89,13 @@ Inputs come from a recorded seed, after fixed sets:
 - string literals: lengths 0, 1, 126 to 129 and 300 (120 over all 256
   octets), raw and Huffman, whole, cut short, with the H flag flipped
   and with non-minimal lengths; literals of zero to three octets;
+  literals whose Huffman data holds EOS; lengths up to 2^100 with
+  three octets of data;
 - static indices 0 to 100 and some far past the table;
+- long inputs: integers of 17 to 1,001 continuation octets, one of
+  100,002 octets under a limit, string lengths written in 100,002
+  octets, and strings of about 100 KB, one of every octet value and one
+  of 30-bit codes, encoded and decoded, raw and Huffman;
 - random strings, over all 256 octets and over printable ASCII, up to
   120 and 300 octets: their Huffman encoding and its decoding, the
   encoding with a bit flipped, eight more ones of padding, a zero in
@@ -99,7 +105,11 @@ Inputs come from a recorded seed, after fixed sets:
   is 127 or more;
 - random octet strings read as integers with every prefix size;
 - malformed requests, which the tool must answer with `error`, and odd
-  but well-formed ones (leading zeros, numbers past 64 bits).
+  but well-formed ones (leading zeros, numbers past 64 bits);
+- the command-line modes `huffman-encode`, `huffman-decode` and
+  `string-decode`, on input that decodes, input that does not, and
+  malformed hex, and wrong arguments: what each run prints on standard
+  output and its exit status.
 
 Every seventh request ends in CR LF.
 
@@ -317,7 +327,10 @@ def decode_int(n, data, minimal=True, max_cont=None, top=None):
     i = data[0] & (2 ** n - 1)
     pos = 1
     if i == 2 ** n - 1:
-        m = 0
+        # The terms (B & 127) * 2^M of the loop, kept and added up at the
+        # end in one step: adding them one at a time to a growing number
+        # takes time quadratic in the number of octets.
+        groups = []
         while True:
             if pos == len(data):
                 return None, "the input ends first"
@@ -325,10 +338,10 @@ def decode_int(n, data, minimal=True, max_cont=None, top=None):
                 return None, "more continuation octets than the limit"
             b = data[pos]
             pos += 1
-            i += (b & 127) * 2 ** m
-            m += 7
+            groups.append(b & 127)
             if b & 128 != 128:
                 break
+        i += int("".join(f"{g:07b}" for g in reversed(groups)), 2)
         if minimal and pos > 2 and data[pos - 1] == 0:
             return None, NONMINIMAL
     if top is not None and i > top:
@@ -726,6 +739,22 @@ def oracle_model(oracle, op, args):
     return None
 
 
+# nghttp2 refuses a header field whose name and value together pass
+# 65,536 octets: NGHTTP2_HD_MAX_NV in its lib/nghttp2_hd.h. The name is
+# one octet here.
+NGHTTP2_MAX_NV = 65536
+
+
+def beyond_limit(oracle, op, answer):
+    """Whether a request is past a limit the oracle has on what it gives
+    back, so that its refusal is not compared: a value over 65,535
+    octets for nghttp2."""
+    if oracle == "nghttp2" and op in ("strdec", "huffdec") and answer is not None:
+        value = answer[0] if op == "strdec" else answer
+        return 1 + len(value) > NGHTTP2_MAX_NV
+    return False
+
+
 def difference_reason(oracle, op, args, why, got, theirs):
     """The named reason the oracle's answer differs from the tool's,
     confirmed by the model, or None. The one reason is an integer that
@@ -948,6 +977,41 @@ def string_sets():
         yield ("string, edge", "strdec", (lit,))
 
 
+def more_string_sets():
+    """Literals whose Huffman data holds EOS, and lengths far past the
+    data."""
+    eos = HUFFMAN[256]
+    for bits in [eos, HUFFMAN[ord("a")] + eos, eos + HUFFMAN[ord("a")]]:
+        bits += "1" * ((8 - len(bits) % 8) % 8)
+        d = octets_of(bits)
+        yield ("string, Huffman data holding EOS", "strdec", (encode_int(7, 1, len(d)) + d,))
+    for length in (2 ** 16, 2 ** 32, 2 ** 64, 2 ** 100):
+        for h in (0, 1):
+            yield ("string, length far past the data", "strdec",
+                   (encode_int(7, h, length) + b"abc",))
+
+
+def long_sets():
+    """Long inputs, which the tool must answer in time linear in their
+    length: integers with many continuation octets, string lengths
+    written in 100,000 octets, and strings of about 100 KB, among them
+    every octet value and the 30-bit codes."""
+    for k in (17, 33, 100, 1001):
+        yield ("long integer", "int", (5, bytes([0x1f] + [0xff] * (k - 1) + [0x01])))
+    big = bytes([0x1f] + [0xff] * 100_000 + [0x01])
+    yield ("long integer", "intmax", (5, 2 ** 32 - 1, big))
+    yield ("long string length", "strdec", (bytes([0x7f] + [0xff] * 100_000 + [0x01]),))
+    yield ("long string length", "strdec", (bytes([0xff] + [0xff] * 100_000 + [0x01]),))
+    every = bytes(range(256)) * 400
+    long30 = bytes([10, 13, 22]) * 30_000
+    for s in (every, long30):
+        yield ("long string", "huffenc", (s,))
+        yield ("long string", "huffdec", (huffman_encode(s),))
+        for h in (0, 1):
+            yield ("long string", "strenc", (h, s))
+            yield ("long string", "strdec", (encode_string(h, s) + b"\x01",))
+
+
 def static_sets():
     for i in list(range(101)) + [127, 128, 255, 256, 2 ** 32, 2 ** 64, 10 ** 30]:
         yield ("static", "static", (i,))
@@ -1032,7 +1096,9 @@ def requests(seed, count):
     yield from integer_sets()
     yield from huffman_sets()
     yield from string_sets()
+    yield from more_string_sets()
     yield from static_sets()
+    yield from long_sets()
     rng = random.Random(seed)
     for _ in range(count):
         s = random_string(rng)
@@ -1066,7 +1132,11 @@ MALFORMED = ["", " ", "\r", "int", "int 5", "int 5 0a 0a", "INT 5 0a", "Int 5 0a
              "strdec 0", "strdec 00 00", "strenc 2 61", "strenc - 61", "strenc 1", "strenc 01 61",
              "strenc 1 6", "static", "static -1", "static 1 2", "static ", "static x",
              "static 0x10", "static \u0661", "static 1\r\r", "nop", "INT", "huffenc --",
-             "strdec -\x00", "int 5 0a\x00", "huffdec 1f\x0b"]
+             "strdec -\x00", "int 5 0a\x00", "huffdec 1f\x0b",
+             "intmax 0 1000 0a", "intmax 9 1000 0a", "intmax x 1000 0a", "intmax 05x 1000 0a",
+             "intmax 5 1000 0A", "intmax 5 1000 0g", "intmax 5 1000 0", "intmax 5 1000",
+             "encint 5 x 1", "encint 5 1e1 1", "encint 5 -0 1", "huffenc 6A", "huffdec 6A",
+             "strdec 0A", "strenc 1 6A", "strenc 0 6A", "strenc 0 6"]
 
 # Well-formed but odd: leading zeros, numbers past 64 bits, `-`, CR LF.
 ODD = ["int 05 0a", "int 008 ff", "static 007", "static 0", "static 18446744073709551617",
@@ -1080,6 +1150,55 @@ ODD = ["int 05 0a", "int 008 ff", "static 007", "static 0", "static 184467440737
 # LF, with CR LF, and with a lone CR, which is not a line ending.
 AT_EOF = [("int 5 0a", "OK 10 -"), ("int 5 0a\r\n", "OK 10 -"),
           ("static 2\r\n", "OK 3a6d6574686f64 474554"), ("int 5 0a\r", "error")]
+
+
+def cli_cases():
+    """Runs of the command-line modes: (arguments, what the run must
+    print on standard output, without the last LF, and its exit status),
+    from the model. A run that does not decode, malformed HEX and wrong
+    arguments print nothing on standard output, and exit with 1, 2 and
+    2."""
+    cases = []
+    for text in ["", "a", "www.example.com", "no-cache", "custom-value",
+                 "Mon, 21 Oct 2013 20:13:22 GMT", "\u00e9\u20ac", " ~\x7f"]:
+        cases.append((["huffman-encode", text], hx(huffman_encode(text.encode("utf-8"))), 0))
+    for d in [b"", huffman_encode(b"a"), huffman_encode(bytes(range(256))), b"\x00", b"\xff",
+              b"\xff\xff\xff\xff", b"\x1f\xff", octets_of(HUFFMAN[256] + "11")]:
+        out, _ = huffman_decode(d)
+        cases.append((["huffman-decode", hx(d)], hx(out) if out is not None else "",
+                      0 if out is not None else 1))
+    for lit in [encode_string(0, b"abc") + b"\x01", encode_string(1, b"custom-key"), b"\x05ab",
+                b"\x7f\x80\x00", b"\x81\x00", b"", b"\x00"]:
+        r, _ = decode_string(lit)
+        cases.append((["string-decode", hx(lit)], f"{hx(r[0])} {hx(r[1])}" if r else "",
+                      0 if r else 1))
+    for bad in ["", "1F", "1", "zz", "0x1f", "1f 1f", "-1"]:
+        cases.append((["huffman-decode", bad], "", 2))
+        cases.append((["string-decode", bad], "", 2))
+    for args in [[], ["bogus"], ["huffman-decode"], ["huffman-encode", "a", "b"],
+                 ["serve", "x"], ["string-decode", "00", "00"]]:
+        cases.append((args, "", 2))
+    return cases
+
+
+def run_cli(cases):
+    """How many runs print and exit as `cli_cases` says, and a failure
+    for each other."""
+    right, failures = 0, []
+    for args, out, status in cases:
+        try:
+            p = subprocess.run([str(EXE)] + args, capture_output=True, timeout=60)
+            got, code_ = p.stdout.decode("utf-8", "backslashreplace"), p.returncode
+            if got.endswith("\n"):
+                got = got[:-1]
+        except (OSError, subprocess.SubprocessError) as e:
+            got, code_ = str(e), None
+        if (got, code_) == (out, status):
+            right += 1
+        else:
+            failures.append((f"hpack {' '.join(repr(a) for a in args)}",
+                             f"{out!r}, exit {status}", f"{short(got, 160)!r}, exit {code_}"))
+    return right, failures
 
 # ---------------------------------------------------------------------
 
@@ -1161,6 +1280,10 @@ def main():
         failures.append(("the model on Appendix C.2 to C.6", f"{len(EXAMPLES)} of {len(EXAMPLES)}",
                          f"{blocks_right} of {len(EXAMPLES)}"))
 
+    cli = cli_cases()
+    cli_right, cli_failures = run_cli(cli)
+    failures += cli_failures
+
     oracles, left_out = [], []
     for name, setup in ORACLE_SETUPS:
         if args.no_oracles:
@@ -1203,12 +1326,13 @@ def main():
             failures.append((req + " (at end of input)", want, f"{got} {problem or ''}".strip()))
 
     # Against the model.
-    wants, whys = [], []
+    wants, whys, answers = [], [], []
     differ_model = 0
     refused = {}
     for (label, op, a), got in zip(items, tool):
         answer, why = model(op, a)
         want = render(op, answer)
+        answers.append(answer)
         wants.append(want)
         whys.append(why)
         if why is not None:
@@ -1241,11 +1365,15 @@ def main():
     agree = {o: 0 for o in names}
     by_op = {o: {} for o in names}
     named = {o: {} for o in names}
+    limited = {o: 0 for o in names}
     for i, (label, op, a) in enumerate(items):
         got = tool[i]
         for o in names:
             theirs = oracle_out[o][i]
             if theirs == "n/a":
+                continue
+            if theirs == "FAIL" and got != "FAIL" and beyond_limit(o, op, answers[i]):
+                limited[o] += 1
                 continue
             asked[o] += 1
             by_op[o][op] = by_op[o].get(op, 0) + 1
@@ -1287,8 +1415,8 @@ def main():
         "",
         f"- Lean: {lean_version()}",
         "- Oracle: the model of RFC 7541 in `tests/run_tests.py`, with the Huffman code of "
-        "Appendix B and the static table of Appendix A read from `tests/rfc7541.txt`, and the "
-        "implementations below",
+        "Appendix B and the static table of Appendix A read from `tests/rfc7541.txt`"
+        + "".join(f"; {o.name} {o.version}" for o in oracles),
     ]
     lines_out += [f"- {o.name}: {o.version}" for o in oracles]
     lines_out += [
@@ -1317,6 +1445,9 @@ def main():
         f"{nonminimal}",
         "- Agreement with each oracle over the requests it answers: "
         + ", ".join(f"{o} {agree[o]} of {asked[o]}" for o in names),
+        "- Refusals not compared because the request passes the oracle's own limit (nghttp2: a "
+        "header field of more than 65,536 octets): "
+        + ", ".join(f"{o} {limited[o]}" for o in names),
         "- Requests each oracle answers, by operation: "
         + "; ".join(f"{o}: " + ", ".join(f"{op} {n}" for op, n in sorted(by_op[o].items()))
                     for o in names),
@@ -1325,6 +1456,8 @@ def main():
         f"- Requests ending in CR LF: every seventh, {len(requests) // 7}",
         f"- Last lines sent alone, with no LF, with CR LF, or with a lone CR, answered right: "
         f"{eof_right} of {len(AT_EOF)}",
+        f"- Command-line modes (`huffman-encode`, `huffman-decode`, `string-decode`, and wrong "
+        f"arguments), printing and exiting as the model says: {cli_right} of {len(cli)}",
         f"- Failures: {len(failures)}",
         "",
         "## Where the oracles differ",

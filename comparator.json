@@ -3,7 +3,7 @@
   "solution_module": "Proofs",
   "theorem_names": [
     "Spec.encodeInt_eq", "Spec.decodeInt_iff", "Spec.decodeInt_rfc", "Spec.decodeInt_of_rfc",
-    "Spec.decodeIntUpTo_iff", "Spec.huffmanEncode_spec", "Spec.huffmanDecode_iff",
+    "Spec.decodeIntUpTo_iff", "Spec.decodeInt_prefix", "Spec.huffmanEncode_spec", "Spec.huffmanDecode_iff",
     "Spec.huffmanDecode_encode", "Spec.huffmanEncode_decode", "Spec.encodeString_spec",
     "Spec.decodeString_iff", "Spec.decodeString_encode", "Spec.staticEntry_eq",
     "Spec.rfc_integers", "Spec.rfc_huffman", "Spec.huffman_rejects"

@@ -21,7 +21,7 @@ An integer has a prefix of N bits, 1 to 8, at the end of its first octet. The ot
 
 **The encoder** writes what the encoding pseudocode writes.
 
-**The decoder** accepts exactly what the encoding pseudocode writes, with any bits above the prefix, followed by anything, and gives back the value and what follows. It never reads past the end of its input. The decoding pseudocode reads one more kind of input, which this decoder refuses: an encoding longer than it need be, whose last octet is 0 after another continuation octet. Section 5.1 allows that refusal: "Integer encodings that exceed implementation limits -- in value or octet length -- MUST be treated as decoding errors." So each value has exactly one encoding the decoder accepts. Values have no upper bound.
+**The decoder** accepts exactly what the encoding pseudocode writes, with any bits above the prefix, followed by anything, and gives back the value and what follows. It never reads past the end of its input. The decoding pseudocode reads one more kind of input, which this decoder refuses: an encoding longer than it need be, whose last octet is 0 and follows at least one octet with the continuation bit set. RFC 7541 does not require minimal encodings, and other decoders read these. Refusing them is a choice stricter than the RFC, made so that each value has exactly one encoding the decoder accepts, for each choice of the bits above the prefix. Values have no upper bound. A prefix size outside 1 to 8 is refused: section 5.1 says "The prefix size, N, is always between 1 and 8 bits". What the encoder writes for such a size is not specified.
 
 **With a stated limit:** `decodeIntUpTo n max` also refuses every value above `max`.
 
@@ -40,9 +40,9 @@ No code is a prefix of another, so each string has exactly one encoding. The dec
 
 ## String literals
 
-A string literal is the H flag, the length of the string data as an integer with a 7-bit prefix, and the data. With H = 0 the data is the string itself. With H = 1 it is the Huffman encoding of the string. `Spec.StringLiteral` states this.
+A string literal is the H flag, the length of the string data as an integer with a 7-bit prefix, and the data. Here the length is written in the fewest octets, as the integer encoder writes it: the integer decoder refuses longer forms. With H = 0 the data is the string itself. With H = 1 it is the Huffman encoding of the string. `Spec.StringLiteral` states this.
 
-**The decoder** accepts exactly a string literal followed by anything, and gives back the string and what follows. It never reads past the end of its input.
+**The decoder** accepts exactly a string literal, its length in the fewest octets, followed by anything, and gives back the string and what follows. It never reads past the end of its input.
 
 **The encoder** writes a string literal, Huffman encoded when asked.
 
@@ -60,26 +60,29 @@ Each property is a theorem in `Spec.lean`, under the name given.
 | The integer decoder accepts exactly those encodings, followed by anything. | `Spec.decodeInt_iff` |
 | What it accepts, the decoding pseudocode reads the same way. | `Spec.decodeInt_rfc` |
 | What the decoding pseudocode reads, it reads the same way, except encodings longer than they need be. | `Spec.decodeInt_of_rfc` |
+| A prefix size outside 1 to 8 is refused. | `Spec.decodeInt_prefix` |
 | With a limit, it accepts exactly the encodings of values up to the limit. | `Spec.decodeIntUpTo_iff` |
 | The Huffman encoder writes the codes and pads with ones. | `Spec.huffmanEncode_spec` |
 | The Huffman decoder accepts exactly the encodings and gives back what was encoded. | `Spec.huffmanDecode_iff` |
 | Decoding an encoding gives back the string. | `Spec.huffmanDecode_encode` |
 | What the decoder accepts is what the encoder writes for the result. | `Spec.huffmanEncode_decode` |
 | The string encoder writes a string literal, with H as asked. | `Spec.encodeString_spec` |
-| The string decoder accepts exactly a string literal followed by anything. | `Spec.decodeString_iff` |
+| The string decoder accepts exactly a string literal, its length in the fewest octets, followed by anything. | `Spec.decodeString_iff` |
 | Decoding an encoding gives back the string and what follows. | `Spec.decodeString_encode` |
 | The static table is Table 1. | `Spec.staticEntry_eq` |
 | The integer examples of Appendix C.1. | `Spec.rfc_integers` |
-| The Huffman strings of Appendix C.4 and C.6. | `Spec.rfc_huffman` |
+| All twelve Huffman strings of Appendix C.4 and C.6. | `Spec.rfc_huffman` |
 | The three rejections of section 5.2, on examples. | `Spec.huffman_rejects` |
 
 ## The command-line tool
 
 `Main.lean` has these modes:
 
-- `hpack huffman-encode TEXT` prints the Huffman encoding of a text, in hex.
-- `hpack huffman-decode HEX` prints the octets a Huffman encoding decodes to, or exits with 1.
-- `hpack string-decode HEX` prints the string literal at the start of some octets and what follows, or exits with 1.
+- `hpack huffman-encode TEXT` prints the Huffman encoding of a text's UTF-8 octets, in hex.
+- `hpack huffman-decode HEX` prints the octets a Huffman encoding decodes to, in hex, or exits with 1.
+- `hpack string-decode HEX` prints the octets of the string literal at the start of some octets and the octets after it, in hex, or exits with 1.
+
+HEX is lower-case hex digits in pairs, or `-` for no octets. Malformed HEX, or wrong arguments, exit with 2.
 - `hpack serve` answers requests from the differential tests, one per line. The header comment of `Main.lean` gives the protocol.
 
 Every answer comes from the functions above.
