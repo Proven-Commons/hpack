@@ -1,0 +1,16 @@
+name = "hpack"
+version = "0.1.0"
+defaultTargets = ["Hpack", "Spec", "Proofs", "hpack"]
+
+[[lean_lib]]
+name = "Hpack"
+
+[[lean_lib]]
+name = "Spec"
+
+[[lean_lib]]
+name = "Proofs"
+
+[[lean_exe]]
+name = "hpack"
+root = "Main"
