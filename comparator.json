@@ -1,12 +1,28 @@
 {
-  "challenge_module": "Spec",
-  "solution_module": "Proofs",
+  "challenge_module": "Hpack.Spec",
+  "solution_module": "Hpack.Proofs",
   "theorem_names": [
-    "Spec.encodeInt_eq", "Spec.decodeInt_iff", "Spec.decodeInt_rfc", "Spec.decodeInt_of_rfc",
-    "Spec.decodeIntUpTo_iff", "Spec.decodeInt_prefix", "Spec.huffmanEncode_spec", "Spec.huffmanDecode_iff",
-    "Spec.huffmanDecode_encode", "Spec.huffmanEncode_decode", "Spec.encodeString_spec",
-    "Spec.decodeString_iff", "Spec.decodeString_encode", "Spec.staticEntry_eq",
-    "Spec.rfc_integers", "Spec.rfc_huffman", "Spec.huffman_rejects"
+    "Hpack.Spec.encodeInt_eq",
+    "Hpack.Spec.decodeInt_iff",
+    "Hpack.Spec.decodeInt_rfc",
+    "Hpack.Spec.decodeInt_of_rfc",
+    "Hpack.Spec.decodeIntUpTo_iff",
+    "Hpack.Spec.decodeInt_prefix",
+    "Hpack.Spec.huffmanEncode_spec",
+    "Hpack.Spec.huffmanDecode_iff",
+    "Hpack.Spec.huffmanDecode_encode",
+    "Hpack.Spec.huffmanEncode_decode",
+    "Hpack.Spec.encodeString_spec",
+    "Hpack.Spec.decodeString_iff",
+    "Hpack.Spec.decodeString_encode",
+    "Hpack.Spec.staticEntry_eq",
+    "Hpack.Spec.rfc_integers",
+    "Hpack.Spec.rfc_huffman",
+    "Hpack.Spec.huffman_rejects"
   ],
-  "permitted_axioms": ["propext", "Quot.sound", "Classical.choice"]
+  "permitted_axioms": [
+    "propext",
+    "Quot.sound",
+    "Classical.choice"
+  ]
 }

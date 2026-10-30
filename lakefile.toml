@@ -1,16 +1,18 @@
 name = "hpack"
 license = "Apache-2.0"
 version = "0.1.0"
-defaultTargets = ["Hpack", "Spec", "Proofs", "hpack"]
+defaultTargets = ["Hpack", "HpackSpec", "HpackProofs", "hpack"]
 
 [[lean_lib]]
 name = "Hpack"
 
 [[lean_lib]]
-name = "Spec"
+name = "HpackSpec"
+roots = ["Hpack.Spec"]
 
 [[lean_lib]]
-name = "Proofs"
+name = "HpackProofs"
+roots = ["Hpack.Proofs"]
 
 [[lean_exe]]
 name = "hpack"

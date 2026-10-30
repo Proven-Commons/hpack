@@ -1,17 +1,17 @@
 /-
   The statements this library is proved to meet, for a reviewer to
-  approve. Each `sorry` is proved in `Proofs/` under the same name, and
+  approve. Each `sorry` is proved in `Hpack/Proofs/` under the same name, and
   `lake comparator` checks that each proof proves exactly the statement
   here.
 
-  The definitions they use are in `Spec/Defs.lean`, written from
+  The definitions they use are in `Hpack/Spec/Defs.lean`, written from
   RFC 7541. The functions they are about are in `Hpack/Basic.lean`.
 -/
 
-import Spec.Defs
+import Hpack.Spec.Defs
 import Hpack
 
-namespace Spec
+namespace Hpack.Spec
 
 /-! ## Integers (section 5.1) -/
 
@@ -160,4 +160,4 @@ theorem huffman_rejects :
     Hpack.huffmanDecode [0xff, 0xff, 0xff, 0xff] = none ∧
     Hpack.huffmanDecode [0xff] = none := sorry
 
-end Spec
+end Hpack.Spec

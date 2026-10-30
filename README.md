@@ -33,23 +33,23 @@ From Lean, on `List UInt8`:
 
 ## What is proved
 
-The statements are in `Spec.lean`, the definitions they use in `Spec/Defs.lean`, and the proofs in `Proofs/`.
+The statements are in `Hpack/Spec.lean`, the definitions they use in `Hpack/Spec/Defs.lean`, and the proofs in `Hpack/Proofs/`.
 
 | Claim | Theorem |
 |-------|---------|
-| The integer encoder writes what the encoding pseudocode of section 5.1 writes, for every prefix size from 1 to 8, every value, and any bits above the prefix. | `Spec.encodeInt_eq` |
-| The integer decoder accepts exactly those encodings, followed by anything, and gives back the value and what follows. | `Spec.decodeInt_iff` |
-| What it accepts, the decoding pseudocode of section 5.1 reads the same way. | `Spec.decodeInt_rfc` |
-| What the decoding pseudocode reads, it reads the same way, except an encoding whose last octet is 0 after another continuation octet. | `Spec.decodeInt_of_rfc` |
-| With a limit, it accepts exactly the encodings of values up to the limit. | `Spec.decodeIntUpTo_iff` |
-| A prefix size outside 1 to 8 is refused, with or without a limit. | `Spec.decodeInt_prefix` |
-| The Huffman encoder writes the codes of Appendix B and pads with ones. `Spec.HuffmanEncodes` states section 5.2. | `Spec.huffmanEncode_spec` |
-| The Huffman decoder accepts exactly the Huffman encodings and gives back what was encoded. | `Spec.huffmanDecode_iff` |
-| Decoding a Huffman encoding gives back the string, and what the decoder accepts is exactly what the encoder writes for the result. | `Spec.huffmanDecode_encode`, `Spec.huffmanEncode_decode` |
-| The string encoder writes a string literal, with the H flag as asked. `Spec.StringLiteral` states section 5.2. | `Spec.encodeString_spec` |
-| The string decoder accepts exactly a string literal, its length in the fewest octets, followed by anything, and gives back the string and what follows. | `Spec.decodeString_iff`, `Spec.decodeString_encode` |
-| Index `i` gives entry `i` of Table 1, and no other index gives an entry. | `Spec.staticEntry_eq` |
-| The integer examples of Appendix C.1, all twelve Huffman strings of Appendix C.4 and C.6, and the three rejections of section 5.2 on examples. | `Spec.rfc_integers`, `Spec.rfc_huffman`, `Spec.huffman_rejects` |
+| The integer encoder writes what the encoding pseudocode of section 5.1 writes, for every prefix size from 1 to 8, every value, and any bits above the prefix. | `Hpack.Spec.encodeInt_eq` |
+| The integer decoder accepts exactly those encodings, followed by anything, and gives back the value and what follows. | `Hpack.Spec.decodeInt_iff` |
+| What it accepts, the decoding pseudocode of section 5.1 reads the same way. | `Hpack.Spec.decodeInt_rfc` |
+| What the decoding pseudocode reads, it reads the same way, except an encoding whose last octet is 0 after another continuation octet. | `Hpack.Spec.decodeInt_of_rfc` |
+| With a limit, it accepts exactly the encodings of values up to the limit. | `Hpack.Spec.decodeIntUpTo_iff` |
+| A prefix size outside 1 to 8 is refused, with or without a limit. | `Hpack.Spec.decodeInt_prefix` |
+| The Huffman encoder writes the codes of Appendix B and pads with ones. `Hpack.Spec.HuffmanEncodes` states section 5.2. | `Hpack.Spec.huffmanEncode_spec` |
+| The Huffman decoder accepts exactly the Huffman encodings and gives back what was encoded. | `Hpack.Spec.huffmanDecode_iff` |
+| Decoding a Huffman encoding gives back the string, and what the decoder accepts is exactly what the encoder writes for the result. | `Hpack.Spec.huffmanDecode_encode`, `Hpack.Spec.huffmanEncode_decode` |
+| The string encoder writes a string literal, with the H flag as asked. `Hpack.Spec.StringLiteral` states section 5.2. | `Hpack.Spec.encodeString_spec` |
+| The string decoder accepts exactly a string literal, its length in the fewest octets, followed by anything, and gives back the string and what follows. | `Hpack.Spec.decodeString_iff`, `Hpack.Spec.decodeString_encode` |
+| Index `i` gives entry `i` of Table 1, and no other index gives an entry. | `Hpack.Spec.staticEntry_eq` |
+| The integer examples of Appendix C.1, all twelve Huffman strings of Appendix C.4 and C.6, and the three rejections of section 5.2 on examples. | `Hpack.Spec.rfc_integers`, `Hpack.Spec.rfc_huffman`, `Hpack.Spec.huffman_rejects` |
 
 A few facts about the 257 codes are checked by the kernel by evaluation:
 
@@ -98,7 +98,7 @@ python3 tests/run_tests.py
 python3 tests/plant_bugs.py
 ```
 
-`lake comparator --paranoid` builds the statements and the proofs in a sandbox. It checks that each theorem in `Proofs/` proves exactly the statement in `Spec.lean`, using only the axioms `propext`, `Classical.choice`, and `Quot.sound`, and replays it through every kernel shipped with Lean.
+`lake comparator --paranoid` builds the statements and the proofs in a sandbox. It checks that each theorem in `Hpack/Proofs/` proves exactly the statement in `Hpack/Spec.lean`, using only the axioms `propext`, `Classical.choice`, and `Quot.sound`, and replays it through every kernel shipped with Lean.
 
 The test script builds the tool and the oracles. Its model reads the Huffman code and the static table from the copy of RFC 7541 in `tests/`, checked by SHA-256, and must decode every example of Appendix C as the RFC does. It then sends these inputs:
 
@@ -116,9 +116,9 @@ It then rewrites `tests/TEST-RESULTS.md`. `tests/plant_bugs.py` plants twenty bu
 ## Layout
 
 - `Hpack/Basic.lean`: the code under proof.
-- `Spec.lean`: the statements, with `sorry` for proofs. A reviewer approves this file.
-- `Spec/Defs.lean`: the definitions the statements use, written from RFC 7541.
-- `Proofs.lean` and `Proofs/`: the proofs, under the same names.
+- `Hpack/Spec.lean`: the statements, with `sorry` for proofs. A reviewer approves this file.
+- `Hpack/Spec/Defs.lean`: the definitions the statements use, written from RFC 7541.
+- `Hpack/Proofs.lean` and `Hpack/Proofs/`: the proofs, under the same names.
 - `Main.lean`: the command-line tool the tests drive.
 - `lakefile.toml`: the build. It names the package and its version, its libraries and executable, and the default targets, and sets nothing else.
 - `comparator.json`: which theorems `lake comparator` checks, and which axioms it allows.

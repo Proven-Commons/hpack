@@ -3,10 +3,10 @@
   (Appendix A), and the limit on integers.
 -/
 
-import Spec.Defs
+import Hpack.Spec.Defs
 import Hpack
-import Proofs.Int
-import Proofs.Huffman
+import Hpack.Proofs.Int
+import Hpack.Proofs.Huffman
 
 namespace HpackProofs
 
@@ -17,7 +17,7 @@ open Hpack
 theorem decodeIntUpTo_iff (n max : Nat) (b : List UInt8) (i : Nat) (rest : List UInt8)
     (hn : 1 ≤ n ∧ n ≤ 8) :
     decodeIntUpTo n max b = some (i, rest) ↔
-      i ≤ max ∧ ∃ high, high < 2 ^ (8 - n) ∧ b = Spec.intEncode n high i ++ rest := by
+      i ≤ max ∧ ∃ high, high < 2 ^ (8 - n) ∧ b = Hpack.Spec.intEncode n high i ++ rest := by
   rw [← decodeInt_iff n b i rest hn]
   unfold decodeIntUpTo
   constructor
@@ -39,11 +39,11 @@ theorem decodeIntUpTo_iff (n max : Nat) (b : List UInt8) (i : Nat) (rest : List 
 
 /-- With a 7-bit prefix, the first octet is the H flag and seven bits. -/
 theorem intEncode_seven (high i : Nat) (_hh : high < 2) :
-    ∃ o tl, o < 128 ∧ Spec.intEncode 7 high i = (high * 128 + o).toUInt8 :: tl := by
-  unfold Spec.intEncode Spec.intOctets
+    ∃ o tl, o < 128 ∧ Hpack.Spec.intEncode 7 high i = (high * 128 + o).toUInt8 :: tl := by
+  unfold Hpack.Spec.intEncode Hpack.Spec.intOctets
   by_cases h : i < 2 ^ 7 - 1
   · exact ⟨i, [], by omega, by simp [h]⟩
-  · refine ⟨127, (Spec.intOctets.rest (i - (2 ^ 7 - 1))).map Nat.toUInt8, by omega, ?_⟩
+  · refine ⟨127, (Hpack.Spec.intOctets.rest (i - (2 ^ 7 - 1))).map Nat.toUInt8, by omega, ?_⟩
     simp [h]
 
 theorem first_octet (high o : Nat) (hh : high < 2) (ho : o < 128) :
@@ -54,17 +54,17 @@ theorem first_octet (high o : Nat) (hh : high < 2) (ho : o < 128) :
 /-! ### The statements -/
 
 theorem encodeString_spec (huffman : Bool) (s : List UInt8) :
-    Spec.StringLiteral huffman s (encodeString huffman s) := by
+    Hpack.Spec.StringLiteral huffman s (encodeString huffman s) := by
   cases huffman
-  · simp only [Spec.StringLiteral, encodeString, Bool.false_eq_true, ↓reduceIte]
+  · simp only [Hpack.Spec.StringLiteral, encodeString, Bool.false_eq_true, ↓reduceIte]
     rw [encodeInt_eq 7 0 s.length (by omega) (by decide)]
-  · simp only [Spec.StringLiteral, encodeString, ↓reduceIte]
+  · simp only [Hpack.Spec.StringLiteral, encodeString, ↓reduceIte]
     exact ⟨huffmanEncode s, huffmanEncode_spec s,
       by rw [encodeInt_eq 7 1 _ (by omega) (by decide)]⟩
 
 theorem decodeString_iff (b s rest : List UInt8) :
     decodeString b = some (s, rest) ↔
-      ∃ huffman lit, Spec.StringLiteral huffman s lit ∧ b = lit ++ rest := by
+      ∃ huffman lit, Hpack.Spec.StringLiteral huffman s lit ∧ b = lit ++ rest := by
   constructor
   · intro h
     cases b with
@@ -90,8 +90,8 @@ theorem decodeString_iff (b s rest : List UInt8) :
             obtain ⟨rfl, rfl⟩ := h
             have h0 : high = 0 := hfirst.mp hraw
             subst h0
-            refine ⟨false, Spec.intEncode 7 0 len ++ r.take len, ?_, ?_⟩
-            · simp only [Spec.StringLiteral, Bool.false_eq_true, ↓reduceIte]
+            refine ⟨false, Hpack.Spec.intEncode 7 0 len ++ r.take len, ?_, ?_⟩
+            · simp only [Hpack.Spec.StringLiteral, Bool.false_eq_true, ↓reduceIte]
               simp [hlen]
             · rw [he, List.append_assoc, List.take_append_drop]
           · rename_i hraw
@@ -103,8 +103,8 @@ theorem decodeString_iff (b s rest : List UInt8) :
                 have : ¬ high = 0 := fun h0 => hraw (hfirst.mpr h0)
                 omega
               subst h1
-              refine ⟨true, Spec.intEncode 7 1 len ++ r.take len, ?_, ?_⟩
-              · simp only [Spec.StringLiteral, ↓reduceIte]
+              refine ⟨true, Hpack.Spec.intEncode 7 1 len ++ r.take len, ?_, ?_⟩
+              · simp only [Hpack.Spec.StringLiteral, ↓reduceIte]
                 refine ⟨r.take len, (huffmanDecode_iff _ _).mp hs, ?_⟩
                 simp [hlen]
               · rw [he, List.append_assoc, List.take_append_drop]
@@ -112,10 +112,10 @@ theorem decodeString_iff (b s rest : List UInt8) :
         · contradiction
   · rintro ⟨huffman, lit, hlit, rfl⟩
     cases huffman
-    · simp only [Spec.StringLiteral, Bool.false_eq_true, ↓reduceIte] at hlit
+    · simp only [Hpack.Spec.StringLiteral, Bool.false_eq_true, ↓reduceIte] at hlit
       subst hlit
       obtain ⟨o, tl, ho, hx⟩ := intEncode_seven 0 s.length (by omega)
-      have hd : decodeInt 7 (Spec.intEncode 7 0 s.length ++ (s ++ rest)) =
+      have hd : decodeInt 7 (Hpack.Spec.intEncode 7 0 s.length ++ (s ++ rest)) =
           some (s.length, s ++ rest) :=
         (decodeInt_iff 7 _ _ _ (by omega)).mpr ⟨0, by decide, rfl⟩
       have hraw : ((0 * 128 + o).toUInt8).toNat < 128 := (first_octet 0 o (by omega) ho).mpr rfl
@@ -123,10 +123,10 @@ theorem decodeString_iff (b s rest : List UInt8) :
       rw [hx, List.cons_append] at hd ⊢
       simp only [decodeString, hd, hraw, ↓reduceIte]
       simp
-    · simp only [Spec.StringLiteral, ↓reduceIte] at hlit
+    · simp only [Hpack.Spec.StringLiteral, ↓reduceIte] at hlit
       obtain ⟨d, hdl, rfl⟩ := hlit
       obtain ⟨o, tl, ho, hx⟩ := intEncode_seven 1 d.length (by omega)
-      have hd : decodeInt 7 (Spec.intEncode 7 1 d.length ++ (d ++ rest)) =
+      have hd : decodeInt 7 (Hpack.Spec.intEncode 7 1 d.length ++ (d ++ rest)) =
           some (d.length, d ++ rest) :=
         (decodeInt_iff 7 _ _ _ (by omega)).mpr ⟨1, by decide, rfl⟩
       have hraw : ¬ ((1 * 128 + o).toUInt8).toNat < 128 := fun h =>
@@ -143,10 +143,10 @@ theorem decodeString_encode (huffman : Bool) (s rest : List UInt8) :
 
 /-! ### The static table -/
 
-theorem staticTable_eq_b : (Hpack.staticTable == Spec.staticTable) = true := by decide +kernel
+theorem staticTable_eq_b : (Hpack.staticTable == Hpack.Spec.staticTable) = true := by decide +kernel
 
 theorem staticEntry_eq (i : Nat) :
-    staticEntry i = if i = 0 then none else Spec.staticTable[i - 1]? := by
+    staticEntry i = if i = 0 then none else Hpack.Spec.staticTable[i - 1]? := by
   unfold staticEntry
   rw [beq_iff_eq.mp staticTable_eq_b]
 

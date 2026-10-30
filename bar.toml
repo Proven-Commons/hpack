@@ -14,7 +14,7 @@ spec_authors = ["claude", "fdn-0", "zero-aska"]
 entry_points = ["Main.lean"]
 
 [spec]
-files = ["SPEC.md", "Spec.lean", "Spec/Defs.lean"]
+files = ["SPEC.md", "Hpack/Spec.lean", "Hpack/Spec/Defs.lean"]
 # The code under proof: the functions the statements are about.
 code = ["Hpack.encodeInt", "Hpack.decodeInt", "Hpack.decodeIntUpTo",
         "Hpack.huffmanEncode", "Hpack.huffmanDecode",

@@ -2,7 +2,7 @@
   Integers with an N-bit prefix (RFC 7541, section 5.1).
 -/
 
-import Spec.Defs
+import Hpack.Spec.Defs
 import Hpack
 
 namespace HpackProofs
@@ -18,10 +18,10 @@ theorem toUInt8_toNat (b : UInt8) : b.toNat.toUInt8 = b := by simp
 
 /-! ### The octets after the prefix -/
 
-theorem encodeRest_eq (j : Nat) : encodeRest j = (Spec.intOctets.rest j).map Nat.toUInt8 := by
+theorem encodeRest_eq (j : Nat) : encodeRest j = (Hpack.Spec.intOctets.rest j).map Nat.toUInt8 := by
   induction j using Nat.strongRecOn with
   | ind j ih =>
-    rw [encodeRest, Spec.intOctets.rest]
+    rw [encodeRest, Hpack.Spec.intOctets.rest]
     by_cases h : j < 128
     · simp [h, show ¬ j ≥ 128 by omega]
     · simp [h, show j ≥ 128 by omega, ih (j / 128) (by omega)]
@@ -285,9 +285,9 @@ theorem decodeInt_prefix (n max : Nat) (b : List UInt8) (hn : n = 0 ∨ 8 < n) :
 /-! ### The statements -/
 
 theorem encodeInt_eq (n high i : Nat) (_hn : 1 ≤ n ∧ n ≤ 8) (hhigh : high < 2 ^ (8 - n)) :
-    encodeInt n high i = Spec.intEncode n high i := by
+    encodeInt n high i = Hpack.Spec.intEncode n high i := by
   have hmod : high % 2 ^ (8 - n) = high := Nat.mod_eq_of_lt hhigh
-  unfold encodeInt Spec.intEncode Spec.intOctets
+  unfold encodeInt Hpack.Spec.intEncode Hpack.Spec.intOctets
   rw [hmod]
   by_cases h : i < 2 ^ n - 1
   · simp [h]
@@ -296,7 +296,7 @@ theorem encodeInt_eq (n high i : Nat) (_hn : 1 ≤ n ∧ n ≤ 8) (hhigh : high 
 theorem decodeInt_iff (n : Nat) (b : List UInt8) (i : Nat) (rest : List UInt8)
     (hn : 1 ≤ n ∧ n ≤ 8) :
     decodeInt n b = some (i, rest) ↔
-      ∃ high, high < 2 ^ (8 - n) ∧ b = Spec.intEncode n high i ++ rest := by
+      ∃ high, high < 2 ^ (8 - n) ∧ b = Hpack.Spec.intEncode n high i ++ rest := by
   have hpos := pow_pos' n
   constructor
   · intro h
@@ -348,15 +348,15 @@ theorem decodeInt_iff (n : Nat) (b : List UInt8) (i : Nat) (rest : List UInt8)
 /-! ### Against the decoding pseudocode -/
 
 theorem loop_encodeRest (j : Nat) (rest : List UInt8) (acc m : Nat) :
-    Spec.intDecode.loop (encodeRest j ++ rest) acc m = some (acc + j * 2 ^ m, rest) := by
+    Hpack.Spec.intDecode.loop (encodeRest j ++ rest) acc m = some (acc + j * 2 ^ m, rest) := by
   induction j using Nat.strongRecOn generalizing acc m with
   | ind j ih =>
     rw [encodeRest]
     by_cases h : j < 128
-    · simp only [h, ↓reduceIte, List.singleton_append, Spec.intDecode.loop,
+    · simp only [h, ↓reduceIte, List.singleton_append, Hpack.Spec.intDecode.loop,
         toNat_toUInt8 (by omega : j < 256)]
       simp [show j / 128 = 0 by omega, Nat.mod_eq_of_lt h]
-    · simp only [h, ↓reduceIte, List.cons_append, Spec.intDecode.loop,
+    · simp only [h, ↓reduceIte, List.cons_append, Hpack.Spec.intDecode.loop,
         toNat_toUInt8 (by omega : j % 128 + 128 < 256)]
       simp only [show (j % 128 + 128) / 128 = 1 by omega, ↓reduceIte,
         show (j % 128 + 128) % 128 = j % 128 by omega]
@@ -368,30 +368,30 @@ theorem loop_encodeRest (j : Nat) (rest : List UInt8) (acc m : Nat) :
 
 theorem decodeInt_rfc (n : Nat) (b : List UInt8) (i : Nat) (rest : List UInt8)
     (hn : 1 ≤ n ∧ n ≤ 8) :
-    decodeInt n b = some (i, rest) → Spec.intDecode n b = some (i, rest) := by
+    decodeInt n b = some (i, rest) → Hpack.Spec.intDecode n b = some (i, rest) := by
   intro h
   obtain ⟨high, hhigh, rfl⟩ := (decodeInt_iff n b i rest hn).mp h
   have hpos := pow_pos' n
-  unfold Spec.intEncode Spec.intOctets
+  unfold Hpack.Spec.intEncode Hpack.Spec.intOctets
   by_cases hi : i < 2 ^ n - 1
   · obtain ⟨h1, h2, _⟩ := first_toNat n high i hn hhigh (by omega)
-    simp only [hi, ↓reduceIte, List.map_nil, List.singleton_append, Spec.intDecode, h1, h2]
+    simp only [hi, ↓reduceIte, List.map_nil, List.singleton_append, Hpack.Spec.intDecode, h1, h2]
   · obtain ⟨h1, h2, _⟩ := first_toNat n high (2 ^ n - 1) hn hhigh (by omega)
-    simp only [hi, ↓reduceIte, List.cons_append, Spec.intDecode, h1, h2, Nat.lt_irrefl]
+    simp only [hi, ↓reduceIte, List.cons_append, Hpack.Spec.intDecode, h1, h2, Nat.lt_irrefl]
     rw [← encodeRest_eq, loop_encodeRest]
     congr 2
     simp
     omega
 
 theorem loop_cases (bs : List UInt8) (acc m i : Nat) (rest : List UInt8)
-    (h : Spec.intDecode.loop bs acc m = some (i, rest)) :
+    (h : Hpack.Spec.intDecode.loop bs acc m = some (i, rest)) :
     (∃ j, decodeRest bs = some (j, rest) ∧ i = acc + j * 2 ^ m) ∨
     ∃ pre c, 128 ≤ c.toNat ∧ bs = pre ++ [c, 0] ++ rest := by
   induction bs generalizing acc m with
-  | nil => simp [Spec.intDecode.loop] at h
+  | nil => simp [Hpack.Spec.intDecode.loop] at h
   | cons b bs ih =>
     have hb := toNat_lt b
-    simp only [Spec.intDecode.loop] at h
+    simp only [Hpack.Spec.intDecode.loop] at h
     split at h
     · rename_i hc
       rcases ih _ _ h with ⟨j', hj', hi⟩ | ⟨pre, c, hc', rfl⟩
@@ -427,14 +427,14 @@ theorem loop_cases (bs : List UInt8) (acc m i : Nat) (rest : List UInt8)
 
 theorem decodeInt_of_rfc (n : Nat) (b : List UInt8) (i : Nat) (rest : List UInt8)
     (hn : 1 ≤ n ∧ n ≤ 8) :
-    Spec.intDecode n b = some (i, rest) →
+    Hpack.Spec.intDecode n b = some (i, rest) →
       decodeInt n b = some (i, rest) ∨
       ∃ pre c, pre ≠ [] ∧ 128 ≤ c.toNat ∧ b = pre ++ [c, 0] ++ rest := by
   intro h
   cases b with
-  | nil => simp [Spec.intDecode] at h
+  | nil => simp [Hpack.Spec.intDecode] at h
   | cons p bs =>
-    simp only [Spec.intDecode] at h
+    simp only [Hpack.Spec.intDecode] at h
     split at h
     · rename_i hp
       cases h

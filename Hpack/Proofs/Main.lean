@@ -1,19 +1,19 @@
 /-
-  The proofs of the statements in `Spec.lean`, under the same names.
-  Each statement is copied from `Spec.lean` word for word, and `lake
-  comparator` checks that they match. The work is in `Proofs/`. The
+  The proofs of the statements in `Hpack/Spec.lean`, under the same names.
+  Each statement is copied from `Hpack/Spec.lean` word for word, and `lake
+  comparator` checks that they match. The work is in `Hpack/Proofs/`. The
   examples are checked by the kernel with `decide`.
 -/
 
-import Spec.Defs
+import Hpack.Spec.Defs
 import Hpack
-import Proofs.Int
-import Proofs.Huffman
-import Proofs.String
+import Hpack.Proofs.Int
+import Hpack.Proofs.Huffman
+import Hpack.Proofs.String
 
 set_option maxRecDepth 100000
 
-namespace Spec
+namespace Hpack.Spec
 
 /-! ## Integers (section 5.1) -/
 
@@ -178,4 +178,4 @@ theorem huffman_rejects :
     Hpack.huffmanDecode [0xff] = none := by
   and_intros <;> decide +kernel
 
-end Spec
+end Hpack.Spec

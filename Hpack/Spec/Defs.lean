@@ -1,16 +1,16 @@
 /-
-  The definitions the statements in `Spec.lean` use, written from
+  The definitions the statements in `Hpack/Spec.lean` use, written from
   RFC 7541 (HPACK: Header Compression for HTTP/2),
   https://www.rfc-editor.org/rfc/rfc7541.
 
   This file is part of the specification: a reviewer approves it with
-  `Spec.lean`. It imports nothing and shares nothing with the code in
+  `Hpack/Spec.lean`. It imports nothing and shares nothing with the code in
   `Hpack/`. The tables below copy Appendix A and the "code as bits"
   column of Appendix B; the code uses the "code as hex" column instead,
   and a proof checks that the two agree.
 -/
 
-namespace Spec
+namespace Hpack.Spec
 
 /-! ## Integers (section 5.1) -/
 
@@ -455,4 +455,4 @@ def staticTable : List (String × String) :=
    ("via", ""),
    ("www-authenticate", "")]
 
-end Spec
+end Hpack.Spec

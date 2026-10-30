@@ -7,7 +7,7 @@
   ones and shorter than 8 bits. The rest is proved for every input.
 -/
 
-import Spec.Defs
+import Hpack.Spec.Defs
 import Hpack
 
 namespace HpackProofs
@@ -20,9 +20,9 @@ set_option maxRecDepth 100000
 
 /-- The code's table, from the "code as hex" column, is the
     specification's, from the "code as bits" column. -/
-theorem table_eq_b : (huffmanTable == Spec.huffmanCodes) = true := by decide +kernel
+theorem table_eq_b : (huffmanTable == Hpack.Spec.huffmanCodes) = true := by decide +kernel
 
-theorem table_eq : huffmanTable = Spec.huffmanCodes := beq_iff_eq.mp table_eq_b
+theorem table_eq : huffmanTable = Hpack.Spec.huffmanCodes := beq_iff_eq.mp table_eq_b
 
 theorem table_length : huffmanTable.length = 257 := by decide +kernel
 
@@ -109,12 +109,12 @@ theorem codes_getElem (i : Nat) (hi : i < codes.length) :
   rw [List.all_eq_true] at h
   simpa using h _ (List.getElem_mem hi')
 
-theorem codes_eq : codes = (List.range 257).map Spec.code := by
+theorem codes_eq : codes = (List.range 257).map Hpack.Spec.code := by
   apply List.ext_getElem
   · simp [codes_length]
   · intro i h1 h2
     obtain ⟨hi', hc, -⟩ := codes_getElem i h1
-    simp only [hc, List.getElem_map, List.getElem_range, Spec.code, ← table_eq,
+    simp only [hc, List.getElem_map, List.getElem_range, Hpack.Spec.code, ← table_eq,
       List.getElem?_eq_getElem hi']
     rfl
 
@@ -239,7 +239,7 @@ theorem symbolOf_ones {j : Nat} (hj : j < 8) : symbolOf (List.replicate j true) 
       rw [hcs, hce]
       exact ⟨List.replicate (30 - j) true, by rw [List.replicate_append_replicate]; congr 1; omega⟩
 
-theorem symbolBits_eq (c : UInt8) : symbolBits c = Spec.code c.toNat := by
+theorem symbolBits_eq (c : UInt8) : symbolBits c = Hpack.Spec.code c.toNat := by
   have hc := UInt8.toNat_lt c
   unfold symbolBits
   rw [codes_eq, List.getD_eq_getElem?_getD]
@@ -257,26 +257,26 @@ theorem symbolBits_getElem (c : UInt8) :
 
 /-! ### Octets and bits -/
 
-theorem toBits_octet (b : UInt8) : toBits b.toNat 8 = Spec.octetBits b := rfl
+theorem toBits_octet (b : UInt8) : toBits b.toNat 8 = Hpack.Spec.octetBits b := rfl
 
 theorem octetBits_byte : ∀ b7 b6 b5 b4 b3 b2 b1 b0 : Bool,
-    Spec.octetBits ([b7, b6, b5, b4, b3, b2, b1, b0].foldl
+    Hpack.Spec.octetBits ([b7, b6, b5, b4, b3, b2, b1, b0].foldl
       (fun acc (b : Bool) => 2 * acc + if b then 1 else 0) 0).toUInt8 =
       [b7, b6, b5, b4, b3, b2, b1, b0] := by
   intro b7 b6 b5 b4 b3 b2 b1 b0
   cases b7 <;> cases b6 <;> cases b5 <;> cases b4 <;> cases b3 <;> cases b2 <;> cases b1 <;>
     cases b0 <;> decide +kernel
 
-theorem bits_ofBits (l : List Bool) (h : l.length % 8 = 0) : Spec.bits (ofBits l) = l := by
+theorem bits_ofBits (l : List Bool) (h : l.length % 8 = 0) : Hpack.Spec.bits (ofBits l) = l := by
   induction l using ofBits.induct with
   | case1 b7 b6 b5 b4 b3 b2 b1 b0 rest ih =>
     rw [ofBits]
-    simp only [Spec.bits, List.flatMap_cons] at ih ⊢
+    simp only [Hpack.Spec.bits, List.flatMap_cons] at ih ⊢
     rw [octetBits_byte, ih (by simp at h; omega)]
     rfl
   | case2 l hl =>
     match l, hl, h with
-    | [], _, _ => simp [ofBits, Spec.bits]
+    | [], _, _ => simp [ofBits, Hpack.Spec.bits]
     | [_], _, h => simp at h
     | [_, _], _, h => simp at h
     | [_, _, _], _, h => simp at h
@@ -287,10 +287,10 @@ theorem bits_ofBits (l : List Bool) (h : l.length % 8 = 0) : Spec.bits (ofBits l
     | _ :: _ :: _ :: _ :: _ :: _ :: _ :: _ :: _, hl, _ => exact absurd rfl (hl _ _ _ _ _ _ _ _ _)
 
 theorem ofBits_octetBits_all :
-    ∀ n, n < 256 → ofBits (Spec.octetBits n.toUInt8) = [n.toUInt8] := by
+    ∀ n, n < 256 → ofBits (Hpack.Spec.octetBits n.toUInt8) = [n.toUInt8] := by
   decide +kernel
 
-theorem ofBits_octetBits (a : UInt8) : ofBits (Spec.octetBits a) = [a] := by
+theorem ofBits_octetBits (a : UInt8) : ofBits (Hpack.Spec.octetBits a) = [a] := by
   have := ofBits_octetBits_all a.toNat (UInt8.toNat_lt a)
   simpa using this
 
@@ -299,30 +299,30 @@ theorem ofBits_append (l rest : List Bool) (hl : l.length = 8) :
   match l, hl with
   | [_, _, _, _, _, _, _, _], _ => simp [ofBits]
 
-theorem ofBits_bits (d : List UInt8) : ofBits (Spec.bits d) = d := by
+theorem ofBits_bits (d : List UInt8) : ofBits (Hpack.Spec.bits d) = d := by
   induction d with
-  | nil => simp [Spec.bits, ofBits]
+  | nil => simp [Hpack.Spec.bits, ofBits]
   | cons a d ih =>
-    simp only [Spec.bits, List.flatMap_cons] at ih ⊢
-    rw [ofBits_append _ _ (by simp [Spec.octetBits]), ofBits_octetBits, ih]
+    simp only [Hpack.Spec.bits, List.flatMap_cons] at ih ⊢
+    rw [ofBits_append _ _ (by simp [Hpack.Spec.octetBits]), ofBits_octetBits, ih]
     rfl
 
-theorem bits_length (d : List UInt8) : (Spec.bits d).length = 8 * d.length := by
+theorem bits_length (d : List UInt8) : (Hpack.Spec.bits d).length = 8 * d.length := by
   induction d with
   | nil => rfl
   | cons b d ih =>
-    simp only [Spec.bits, List.flatMap_cons, List.length_append, List.length_cons] at ih ⊢
+    simp only [Hpack.Spec.bits, List.flatMap_cons, List.length_append, List.length_cons] at ih ⊢
     rw [ih]
-    simp [Spec.octetBits]
+    simp [Hpack.Spec.octetBits]
     omega
 
-theorem bits_inj {d e : List UInt8} (h : Spec.bits d = Spec.bits e) : d = e := by
+theorem bits_inj {d e : List UInt8} (h : Hpack.Spec.bits d = Hpack.Spec.bits e) : d = e := by
   rw [← ofBits_bits d, ← ofBits_bits e, h]
 
 /-! ### Decoding -/
 
 /-- The concatenated codes of a string. -/
-def codesOf (s : List UInt8) : List Bool := s.flatMap fun c => Spec.code c.toNat
+def codesOf (s : List UInt8) : List Bool := s.flatMap fun c => Hpack.Spec.code c.toNat
 
 theorem flatMap_symbolBits (s : List UInt8) : s.flatMap symbolBits = codesOf s := by
   unfold codesOf
@@ -458,9 +458,9 @@ theorem decodeBits_complete (s : List UInt8) (k : Nat) (hk : k < 8) :
 /-! ### The statements -/
 
 theorem huffmanDecode_bits (d : List UInt8) :
-    huffmanDecode d = decodeBits (Spec.bits d) [] := rfl
+    huffmanDecode d = decodeBits (Hpack.Spec.bits d) [] := rfl
 
-theorem huffmanEncode_spec (s : List UInt8) : Spec.HuffmanEncodes s (huffmanEncode s) := by
+theorem huffmanEncode_spec (s : List UInt8) : Hpack.Spec.HuffmanEncodes s (huffmanEncode s) := by
   refine ⟨(8 - (codesOf s).length % 8) % 8, by omega, ?_⟩
   unfold huffmanEncode
   rw [flatMap_symbolBits, bits_ofBits]
@@ -469,7 +469,7 @@ theorem huffmanEncode_spec (s : List UInt8) : Spec.HuffmanEncodes s (huffmanEnco
     omega
 
 theorem huffmanDecode_iff (d s : List UInt8) :
-    huffmanDecode d = some s ↔ Spec.HuffmanEncodes s d := by
+    huffmanDecode d = some s ↔ Hpack.Spec.HuffmanEncodes s d := by
   rw [huffmanDecode_bits]
   constructor
   · intro h
@@ -482,8 +482,8 @@ theorem huffmanDecode_iff (d s : List UInt8) :
 theorem huffmanDecode_encode (s : List UInt8) : huffmanDecode (huffmanEncode s) = some s :=
   (huffmanDecode_iff _ _).mpr (huffmanEncode_spec s)
 
-theorem huffmanEncodes_unique {s d e : List UInt8} (hd : Spec.HuffmanEncodes s d)
-    (he : Spec.HuffmanEncodes s e) : d = e := by
+theorem huffmanEncodes_unique {s d e : List UInt8} (hd : Hpack.Spec.HuffmanEncodes s d)
+    (he : Hpack.Spec.HuffmanEncodes s e) : d = e := by
   obtain ⟨k, hk, hd⟩ := hd
   obtain ⟨k', hk', he⟩ := he
   have ld := congrArg List.length hd
